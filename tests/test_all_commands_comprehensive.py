@@ -605,3 +605,28 @@ async def test_admin_interval_add_remove_and_scraperlog(full_bot_env):
     ctx.send.assert_called()
 
 
+@pytest.mark.asyncio
+async def test_admin_simulate_command(full_bot_env):
+    """Tests the !simulate / !testdrop command for simulating live slot deltas."""
+    cog = full_bot_env["admin_cog"]
+    engine = full_bot_env["engine"]
+    db = full_bot_env["db"]
+    ctx = create_mock_ctx(is_admin=True)
+
+    mock_student = AsyncMock()
+    mock_student.display_name = "test_watcher"
+    full_bot_env["bot"].fetch_user = AsyncMock(return_value=mock_student)
+
+    # Register student watcher
+    await db.add_user_watch(111222, "test_watcher", "3475", "GEMATMW", "A54D", "SECTION")
+
+    # Run !simulate GEMATMW A54D 2 1
+    await cog.simulate_command.callback(cog, ctx, course_code="GEMATMW", section_name="A54D", open_slots=2, prev_open_slots=1)
+
+    ctx.send.assert_called()
+    call_args = ctx.send.call_args[1]
+    assert "Slot Delta Simulation Dispatched" in call_args["embed"].title
+    # Verify student received DM
+    mock_student.send.assert_called_once()
+
+

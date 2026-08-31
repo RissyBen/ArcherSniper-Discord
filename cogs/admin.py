@@ -1103,6 +1103,67 @@ class AdminCog(commands.Cog, name="Admin"):
         except Exception as e:
             await ctx.send(f"❌ Error reading log file: `{e}`")
 
+    @commands.command(name="simulate", aliases=["testdrop", "simdelta", "simulatedelta"])
+    @is_admin()
+    async def simulate_command(
+        self,
+        ctx: commands.Context,
+        course_code: str,
+        section_name: str,
+        open_slots: int,
+        prev_open_slots: int = 0,
+    ):
+        """Simulates a live slot delta event to verify public feed broadcasts and student DM delivery in real time."""
+        clean_code = course_code.strip().upper()
+        clean_sec = section_name.strip().upper()
+
+        if not self.engine:
+            await ctx.send("❌ Watchdog Engine is not active.")
+            return
+
+        # Prepare section delta data
+        classification = classify_course(clean_code)
+        course_name = clean_code
+        cat_match = await self.db.search_catalog(clean_code)
+        if cat_match:
+            course_name = cat_match[0].get("course_name", clean_code)
+
+        section_data = {
+            "section_name": clean_sec,
+            "capacity": 45,
+            "enlisted": max(0, 45 - open_slots),
+            "open_slots": open_slots,
+            "teacher": "Simulator Instructor",
+            "schedule": "MONDAY 08:00 AM - 11:00 AM",
+        }
+
+        # Set previous state in cache to simulate delta from prev_open_slots
+        cache_key = (clean_code, clean_sec)
+        self.engine.section_slot_cache[cache_key] = prev_open_slots
+        self.engine.total_poll_cycles = max(2, self.engine.total_poll_cycles)
+
+        await self.engine._process_section_delta(
+            course_id="99999",
+            course_code=clean_code,
+            course_name=course_name,
+            section_data=section_data,
+        )
+
+        embed = discord.Embed(
+            title="⚡ Slot Delta Simulation Dispatched",
+            description=(
+                f"Successfully simulated a live slot change for **`{clean_code} {clean_sec}`**!\n\n"
+                f"> 📊 **Delta:** `{prev_open_slots}` ➔ `{open_slots}` Open Slots\n"
+                f"> 🎯 **Category:** `{classification.college_name or 'General Education / LC'}`\n"
+                f"> 📢 **Target Feed Channel:** `#{classification.feed_channel_key}`\n"
+                f"> 📬 **Status:** Dispatched real-time DM alerts & public feed broadcast!"
+            ),
+            color=0x00E676,
+            timestamp=datetime.now(timezone.utc),
+        )
+        embed.set_footer(text="ArcherSniper Real-Time Test Simulation • !simulate <CODE> <SEC> <SLOTS>")
+        await ctx.send(embed=embed)
+
 
 async def setup(bot: commands.Bot):
     db = getattr(bot, "db", None)
