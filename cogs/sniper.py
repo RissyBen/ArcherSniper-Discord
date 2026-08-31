@@ -24,6 +24,7 @@ from utils.embeds import (
     get_monitored_courses_page_count,
     create_admin_course_inspection_embed,
     get_courseinfo_page_count,
+    create_system_status_overview_embed,
 )
 
 logger = logging.getLogger("ArcherSniper.SniperCog")
@@ -590,25 +591,43 @@ class SniperCog(commands.Cog, name="Sniper"):
                         target_courses.append(matches[0])
                     else:
                         await ctx.send(f"⚠️ Course code `{code}` was not found in the pool or catalog.")
+
+            if not target_courses:
+                return
+
+            for course in target_courses[:5]:
+                cid = course.get("course_id")
+                code = course.get("course_code")
+                name = course.get("course_name", "")
+                sections = await self.db.get_all_section_states(code)
+                if not sections and self.engine.is_connected:
+                    try:
+                        sections = await self.engine.api.fetch_section_data(cid)
+                    except Exception:
+                        pass
+
+                embed = create_status_embed(code, name, sections)
+                await ctx.send(embed=embed)
         else:
-            target_courses = await self.db.get_monitored_courses(active_only=True)
+            # High-level clean status summary
+            all_monitored = await self.db.get_monitored_courses(active_only=True)
+            total_monitored = len(all_monitored)
+            ge_lc_count = sum(1 for c in all_monitored if c.get("is_ge_lc"))
+            college_count = total_monitored - ge_lc_count
 
-        if not target_courses:
-            await ctx.send("ℹ️ No courses currently monitored. Use `!watch <code>` to add.")
-            return
+            all_sections = await self.db.get_all_section_states()
+            total_sections_count = len(all_sections)
+            open_sections_count = sum(1 for s in all_sections if s.get("open_slots", 0) > 0)
 
-        for course in target_courses[:5]:
-            cid = course.get("course_id")
-            code = course.get("course_code")
-            name = course.get("course_name", "")
-            sections = await self.db.get_all_section_states(code)
-            if not sections and self.engine.is_connected:
-                try:
-                    sections = await self.engine.api.fetch_section_data(cid)
-                except Exception:
-                    pass
-
-            embed = create_status_embed(code, name, sections)
+            embed = create_system_status_overview_embed(
+                bot_active=self.engine.bot_active,
+                poll_interval=self.engine.poll_interval,
+                total_monitored=total_monitored,
+                ge_lc_count=ge_lc_count,
+                college_count=college_count,
+                open_sections_count=open_sections_count,
+                total_sections_count=total_sections_count,
+            )
             await ctx.send(embed=embed)
 
     # ==========================================

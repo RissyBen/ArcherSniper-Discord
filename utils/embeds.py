@@ -408,6 +408,56 @@ def create_status_embed(
     return embed
 
 
+def create_system_status_overview_embed(
+    bot_active: bool,
+    poll_interval: float,
+    total_monitored: int,
+    ge_lc_count: int,
+    college_count: int,
+    open_sections_count: int,
+    total_sections_count: int,
+) -> discord.Embed:
+    """Builds a clean, informative system-wide status overview card when !status is run without course args."""
+    status_label = "🟢 ONLINE & STREAMING" if bot_active else "🔴 OFFLINE / PAUSED"
+    color = COLOR_DLSU_GREEN if bot_active else COLOR_ALERT_RED
+
+    embed = discord.Embed(
+        title="📊 ArcherSniper — Live System & Enrollment Status",
+        description=(
+            f"**Watchdog Status:** `{status_label}`\n"
+            f"> ⚡ **Scraper Loop:** Polling every `{poll_interval:.0f}s`\n"
+            f"> 🎯 **Total Active Courses Monitored:** `{total_monitored}` courses\n"
+            f"> 🟢 **Live Open Sections Detected:** `{open_sections_count}` / `{total_sections_count}` sections\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        ),
+        color=color,
+        timestamp=datetime.now(timezone.utc),
+    )
+
+    embed.add_field(
+        name="🎯 24/7 Universal Pool",
+        value=f"**`{ge_lc_count}` Courses**\n(GE, LC, SAS, LASARE, NSTP)\n*Always monitored in background*",
+        inline=True,
+    )
+    embed.add_field(
+        name="🏛️ College Majors Tracked",
+        value=f"**`{college_count}` Courses**\n(CCS, CLA, COS, GCOE, RVRCOB...)\n*Monitored on-demand via `!watch`*",
+        inline=True,
+    )
+    embed.add_field(
+        name="💡 Quick Commands",
+        value=(
+            "• `!status <CODE>` — View section cards (e.g. `!status GEWORLD`)\n"
+            "• `!watchlist` — View your personal saved courses\n"
+            "• `!courses` — List all 24/7 GE & LC subjects\n"
+            "• `!search <query>` — Search course catalog"
+        ),
+        inline=False,
+    )
+    embed.set_footer(text="ArcherSniper DLSU • Real-Time Watchdog", icon_url=DLSU_LOGO_URL)
+    return embed
+
+
 def get_courseinfo_page_count(sections: list[dict], per_page: int = 12) -> int:
     """Calculates total pages needed for course section inspection."""
     import math
