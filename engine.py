@@ -730,7 +730,7 @@ class WatchdogEngine:
 
             # Broadcast to respective College Feed
             col_key = classification.feed_channel_key
-            if col_key and col_key in channels:
+            if col_key and col_key != "ge_lc" and col_key in channels:
                 col_ch_id = channels[col_key]
                 ch = self.bot.get_channel(col_ch_id)
                 if not ch:
