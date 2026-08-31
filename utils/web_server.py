@@ -33,6 +33,8 @@ class HealthWebServer:
         self.app.router.add_get("/", self.handle_root)
         self.app.router.add_get("/health", self.handle_health)
         self.app.router.add_get("/sync", self.handle_mobile_sync_ui)
+        self.app.router.add_get("/extension.zip", self.handle_download_extension)
+        self.app.router.add_get("/download/extension", self.handle_download_extension)
         
         # Tier 3 1-Click Bookmarklet Webhook endpoints
         self.app.router.add_options("/api/update_cookies", self.handle_options)
@@ -196,6 +198,9 @@ class HealthWebServer:
         <div id="alert-msg"></div>
 
         <div class="links">
+            <a href="/extension.zip" style="display: block; padding: 12px; background: #1e293b; border: 1px solid #334155; border-radius: 10px; margin-bottom: 12px; color: #38bdf8; text-decoration: none;">
+                📥 <strong>Download Extension (.zip)</strong> for Lemur / Kiwi
+            </a>
             <a href="https://archershub.dlsu.edu.ph/CourseFinder/" target="_blank">🌐 Open Archer's Hub CourseFinder ➔</a>
         </div>
     </div>
@@ -251,6 +256,37 @@ class HealthWebServer:
 </body>
 </html>"""
         return web.Response(text=html, content_type="text/html", headers=CORS_HEADERS)
+
+    async def handle_download_extension(self, request: web.Request) -> web.Response:
+        """Serves the zipped Chrome/Lemur extension file for easy 1-click mobile download."""
+        from pathlib import Path
+        import zipfile
+        import os
+        
+        base_dir = Path(__file__).resolve().parent.parent
+        zip_path = base_dir / "ArcherSniper-Extension.zip"
+        ext_dir = base_dir / "extension"
+        
+        # Build or refresh zip package
+        if not zip_path.exists():
+            with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
+                for root, _, files in os.walk(ext_dir):
+                    for file in files:
+                        full_p = os.path.join(root, file)
+                        rel_p = os.path.relpath(full_p, ext_dir)
+                        z.write(full_p, rel_p)
+                        
+        with open(zip_path, "rb") as f:
+            data = f.read()
+            
+        return web.Response(
+            body=data,
+            content_type="application/zip",
+            headers={
+                **CORS_HEADERS,
+                "Content-Disposition": 'attachment; filename="ArcherSniper-Extension.zip"',
+            },
+        )
 
     async def handle_options(self, request: web.Request) -> web.Response:
         """Handles CORS preflight requests from browser bookmarklets."""
