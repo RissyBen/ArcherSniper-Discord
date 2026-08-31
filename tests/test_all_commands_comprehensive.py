@@ -268,15 +268,15 @@ async def test_role_adaptive_help_command(full_bot_env):
     await cog.help_command.callback(cog, student_ctx)
     student_ctx.send.assert_called()
     student_embed = student_ctx.send.call_args[1]["embed"]
-    assert any("Student Commands" in f.name for f in student_embed.fields)
-    assert not any("Admin & Engine Controls" in f.name for f in student_embed.fields)
+    assert any("Student" in f.name for f in student_embed.fields)
+    assert not any("Administrative" in f.name for f in student_embed.fields)
 
     # 2. Admin Help View
     admin_ctx = create_mock_ctx(is_admin=True)
     await cog.help_command.callback(cog, admin_ctx)
     admin_ctx.send.assert_called()
     admin_embed = admin_ctx.send.call_args[1]["embed"]
-    assert any("Admin & Engine Controls" in f.name for f in admin_embed.fields)
+    assert any("Administrative" in f.name or "Admin" in f.name for f in admin_embed.fields)
 
 
 # ====================================================================

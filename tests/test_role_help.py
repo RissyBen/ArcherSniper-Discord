@@ -9,8 +9,8 @@ from cogs.help import (
     user_is_admin,
     get_student_overview_embed,
     get_admin_overview_embed,
-    StudentHelpButtonView,
-    AdminHelpButtonView,
+    StudentHelpSelectView,
+    AdminHelpSelectView,
 )
 
 
@@ -36,34 +36,41 @@ def test_student_overview_hides_admin_commands():
     embed = get_student_overview_embed()
     field_names = [f.name for f in embed.fields]
 
-    assert "🎯 Student Commands" in field_names
-    assert "💡 Quick Start" in field_names
+    assert "🎯 Student Quick Commands" in field_names
+    assert "💡 Quick Start Tutorial (4 Steps)" in field_names
     # Admin controls MUST NOT be present
     assert "⚙️ Admin & Engine Controls" not in field_names
+    assert "📂 Available Administrative Modules" not in field_names
 
-    # Check button view
-    view = StudentHelpButtonView()
-    labels = [b.label for b in view.children if hasattr(b, "label")]
-    assert "Overview" in labels
-    assert "Student Guide" in labels
-    assert "Admin Controls" not in labels
-    assert "cURL Guide" not in labels
+    # Check select view
+    view = StudentHelpSelectView()
+    select_items = [item for item in view.children if isinstance(item, discord.ui.Select)]
+    assert len(select_items) == 1
+    select_opts = [opt.value for opt in select_items[0].options]
+    assert "overview" in select_opts
+    assert "student" in select_opts
+    assert "engine" not in select_opts
+    assert "auth" not in select_opts
 
 
 def test_admin_overview_shows_all_controls():
     embed = get_admin_overview_embed()
     field_names = [f.name for f in embed.fields]
 
-    assert "🎯 Student Commands" in field_names
-    assert "⚙️ Admin & Engine Controls" in field_names
+    assert "📂 Available Administrative Modules" in field_names
 
-    # Check button view
-    view = AdminHelpButtonView()
-    labels = [b.label for b in view.children if hasattr(b, "label")]
-    assert "Overview" in labels
-    assert "Student Guide" in labels
-    assert "Admin Controls" in labels
-    assert "Auth & Cookies" in labels
+    # Check select view
+    view = AdminHelpSelectView()
+    select_items = [item for item in view.children if isinstance(item, discord.ui.Select)]
+    assert len(select_items) == 1
+    select_opts = [opt.value for opt in select_items[0].options]
+    assert "overview" in select_opts
+    assert "engine" in select_opts
+    assert "data" in select_opts
+    assert "auth" in select_opts
+    assert "server" in select_opts
+    assert "student" in select_opts
+    assert "curl" in select_opts
 
 
 @pytest.mark.asyncio
@@ -118,11 +125,11 @@ async def test_help_command_categories_and_aliases():
 
     await cog.help_command.callback(cog, admin_ctx, category=None)
     admin_ctx.send.assert_called()
-    assert "Admin & Engine Controls Guide" in admin_ctx.send.call_args[1]["embed"].title
+    assert "Admin Command Center" in admin_ctx.send.call_args[1]["embed"].title
 
     # 5. Admin runs !help curl
     admin_ctx.send.reset_mock()
     await cog.help_command.callback(cog, admin_ctx, category="curl")
     admin_ctx.send.assert_called()
-    assert "Session Authentication & Cookie Guide" in admin_ctx.send.call_args[1]["embed"].title
+    assert "Master Session & cURL" in admin_ctx.send.call_args[1]["embed"].title
 
