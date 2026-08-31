@@ -97,9 +97,12 @@ class WatchdogEngine:
         self.last_poll_time: datetime | None = None
         self.start_time = datetime.now(timezone.utc)
 
-        # Background Tasks
+        # Background Tasks & Grace Timers
         self.polling_task: asyncio.Task | None = None
         self.heartbeat_task: asyncio.Task | None = None
+        self.disconnect_alert_task: asyncio.Task | None = None
+        self.disconnect_alert_sent: bool = False
+        self.disconnect_grace_period_seconds: int = 300  # 5 minutes grace period before pinging admins
 
     async def initialize(self):
         """Loads cached states, system configuration, and master auth."""
@@ -907,53 +910,84 @@ class WatchdogEngine:
     # ==========================================
 
     async def _handle_disconnect(self, reason: str):
-        """Handles session disconnect: alerts admins, mutes pings, and posts @everyone announcement."""
+        """
+        Handles session disconnect: updates internal state, pauses drop DMs (Safe-Mode),
+        and starts 5-minute grace period before sending any Discord pings or announcements.
+        """
         if not self.is_connected and self.session_expired:
             return
 
-        logger.warning(f"Watchdog detected disconnect: {reason}")
+        logger.warning(f"Watchdog detected session disconnect: {reason}")
         self.is_connected = False
         self.session_expired = True
+        self.disconnect_alert_sent = False
         await self.db.update_auth_status("DISCONNECTED")
-
-        guild_ids = await self.db.get_all_configured_guilds()
-        for g_id in guild_ids:
-            channels = await self.db.get_server_channels(g_id)
-
-            # 1. Private alert to #🚨-admin-disconnects
-            disc_ch_id = channels.get("admin_disconnects")
-            if disc_ch_id:
-                ch = self.bot.get_channel(disc_ch_id)
-                if ch:
-                    embed = create_system_alert_embed(
-                        title="🚨 Master cURL Session Disconnected",
-                        description=(
-                            f"**Reason:** `{reason}`\n\n"
-                            "> 🔇 **Safe-Mode:** Student DM pings are muted.\n"
-                            "> 🔑 **Fix:** Run `!setcurl <curl>` in <#{channels.get('admin_commands')}> to restore."
-                        ),
-                        level="error",
-                    )
-                    try:
-                        await ch.send(embed=embed)
-                    except Exception:
-                        pass
-
-            # 2. Public announcement to #📢-announcements (@everyone ping)
-            ann_ch_id = channels.get("announcements")
-            if ann_ch_id:
-                ch = self.bot.get_channel(ann_ch_id)
-                if ch:
-                    embed = create_disconnect_announcement()
-                    try:
-                        await ch.send(content="@everyone", embed=embed)
-                    except Exception:
-                        pass
-
-        # Trigger auto-reconnect
         await self.update_bot_presence()
+
+        # Cancel any existing delayed notification task
+        if self.disconnect_alert_task and not self.disconnect_alert_task.done():
+            self.disconnect_alert_task.cancel()
+
+        # Launch 5-minute grace timer before pinging admins or posting public announcements
+        self.disconnect_alert_task = asyncio.create_task(
+            self._delayed_disconnect_notifier(reason),
+            name="Delayed_Disconnect_Notifier",
+        )
+
+        # Trigger Multi-Tier Auto-Reconnect Engine immediately in background
         if self.auto_reconnect_enabled and not self.is_reconnecting:
             asyncio.create_task(self._run_two_stage_reconnect())
+
+    async def _delayed_disconnect_notifier(self, reason: str):
+        """
+        Waits 5 minutes (300 seconds) before dispatching any Discord pings.
+        If the bot recovers autonomously (Tier 1/2) within 5 minutes, this task is cancelled silently.
+        """
+        try:
+            logger.info("⏳ Session disconnect detected. Entering Safe-Mode with 5-minute silent grace period...")
+            await asyncio.sleep(self.disconnect_grace_period_seconds)
+
+            # Check if still disconnected after 5 minutes
+            if not self.is_connected and self.session_expired and not self.disconnect_alert_sent:
+                self.disconnect_alert_sent = True
+                logger.warning(f"🚨 Bot remained disconnected for {self.disconnect_grace_period_seconds}s. Dispatching admin alerts for: {reason}")
+
+                guild_ids = await self.db.get_all_configured_guilds()
+                for g_id in guild_ids:
+                    channels = await self.db.get_server_channels(g_id)
+
+                    # 1. Private alert to #🚨-admin-disconnects
+                    disc_ch_id = channels.get("admin_disconnects")
+                    if disc_ch_id:
+                        ch = self.bot.get_channel(disc_ch_id)
+                        if ch:
+                            embed = create_system_alert_embed(
+                                title="🚨 Master Session Disconnected (5-Min Inactive)",
+                                description=(
+                                    f"**Reason:** `{reason}`\n\n"
+                                    f"> ⏱️ **Downtime:** Bot was unable to auto-reconnect within **5 minutes**.\n"
+                                    f"> 🔇 **Safe-Mode:** Student drop alerts are paused.\n"
+                                    f"> 🔑 **Fix:** Run `!setcurl <curl>` in <#{channels.get('admin_commands')}> or click your 1-Click Bookmarklet."
+                                ),
+                                level="error",
+                            )
+                            try:
+                                await ch.send(embed=embed)
+                            except Exception:
+                                pass
+
+                    # 2. Public announcement to #📢-announcements (@everyone ping)
+                    ann_ch_id = channels.get("announcements")
+                    if ann_ch_id:
+                        ch = self.bot.get_channel(ann_ch_id)
+                        if ch:
+                            embed = create_disconnect_announcement()
+                            try:
+                                await ch.send(content="@everyone", embed=embed)
+                            except Exception:
+                                pass
+        except asyncio.CancelledError:
+            logger.info("🟢 5-Minute disconnect alert cancelled (bot reconnected autonomously within grace period).")
 
     async def broadcast_bot_status(self, is_online: bool, admin_name: str, reason: str | None = None):
         """Broadcasts Bot ONLINE or OFFLINE announcement with @everyone mention to #📢-announcements."""
@@ -1063,6 +1097,13 @@ class WatchdogEngine:
         self.consecutive_errors = 0
         self.session_connected_time = time.time()
         self.has_sent_6h_warning = False
+
+        # Cancel any pending 5-minute disconnect alert
+        if self.disconnect_alert_task and not self.disconnect_alert_task.done():
+            self.disconnect_alert_task.cancel()
+            self.disconnect_alert_task = None
+        self.disconnect_alert_sent = False
+
         await self.db.update_auth_status("CONNECTED")
         logger.info(f"🟢 Reconnection SUCCESS via {stage_label}!")
         await self.update_bot_presence()

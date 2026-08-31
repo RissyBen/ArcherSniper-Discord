@@ -2,6 +2,7 @@
 Unit Tests for Smart Delta Alerting & Anti-Spam Logic
 """
 
+import asyncio
 import pytest
 import pytest_asyncio
 from unittest.mock import AsyncMock, MagicMock
@@ -178,4 +179,33 @@ async def test_brand_new_section_triggers_alert_after_baseline(mock_engine):
     await mock_engine._process_section_delta("101", "STSWENG", "Software Engineering", new_sec_data)
     mock_engine._dispatch_personal_dms.assert_called_once()
     mock_engine._broadcast_to_feeds.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_5min_delayed_disconnect_notifier(mock_engine):
+    """Verifies that disconnect alerts wait 5 minutes before pinging, and cancel if auto-reconnect succeeds."""
+    mock_engine.disconnect_grace_period_seconds = 0.05
+    mock_channel = MagicMock()
+    mock_channel.send = AsyncMock()
+    mock_engine.bot.get_channel = MagicMock(return_value=mock_channel)
+    mock_engine.db.get_all_configured_guilds = AsyncMock(return_value=[12345])
+    mock_engine.db.get_server_channels = AsyncMock(return_value={"admin_disconnects": 999, "announcements": 888})
+
+    # 1. Disconnect occurs -> grace task starts, NO pings sent immediately
+    await mock_engine._handle_disconnect("HTTP 401 Session Expired")
+    assert mock_engine.disconnect_alert_task is not None
+    mock_channel.send.assert_not_called()
+
+    # 2. Reconnect succeeds quickly within grace window -> timer cancelled, zero pings sent!
+    await mock_engine._on_reconnect_success("Tier 2 Playwright")
+    await asyncio.sleep(0.08)
+    mock_channel.send.assert_not_called()
+    assert mock_engine.disconnect_alert_sent is False
+
+    # 3. If disconnected and NOT reconnected past grace period -> alerts dispatched
+    await mock_engine._handle_disconnect("HTTP 401 Session Expired")
+    await asyncio.sleep(0.08)
+    assert mock_channel.send.call_count >= 1
+    assert mock_engine.disconnect_alert_sent is True
+
 
