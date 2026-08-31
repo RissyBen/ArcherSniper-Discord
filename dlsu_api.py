@@ -94,11 +94,31 @@ class DLSUApiClient:
     async def _handle_response_cookies(self, response: aiohttp.ClientResponse):
         """Captures Set-Cookie headers and persists updated session cookies."""
         updated = False
+        # 1. Standard parsed cookies
         for cookie_name, morsel in response.cookies.items():
             val = morsel.value
             if val and self.cookies.get(cookie_name) != val:
                 self.cookies[cookie_name] = val
                 updated = True
+
+        # 2. Raw Set-Cookie header parts
+        if hasattr(response.headers, "getall"):
+            set_cookie_headers = response.headers.getall("Set-Cookie", [])
+        elif isinstance(response.headers, dict):
+            sc = response.headers.get("Set-Cookie")
+            set_cookie_headers = [sc] if sc else []
+        else:
+            set_cookie_headers = []
+
+        for sc in set_cookie_headers:
+            if not sc or not isinstance(sc, str):
+                continue
+            parts = sc.split(";")[0].split("=", 1)
+            if len(parts) == 2:
+                c_name, c_val = parts[0].strip(), parts[1].strip()
+                if c_name and c_val and self.cookies.get(c_name) != c_val:
+                    self.cookies[c_name] = c_val
+                    updated = True
 
         if updated and self.on_cookie_update:
             try:
@@ -193,9 +213,18 @@ class DLSUApiClient:
 
     async def send_heartbeat(self, campus_no: int = DEFAULT_CAMPUS_NO) -> bool:
         """
-        Sends keep-alive probe to maintain ASP.NET session and Azure Gateway Affinity.
-        Endpoint: POST /CourseFinder/GetAllDropDownList/
+        Sends keep-alive probe to maintain ASP.NET session sliding expiration and Azure Gateway Affinity.
+        1. Touches GET /CourseFinder/ with authenticated cookies to reset IIS ASP.NET 20-minute sliding timeout.
+        2. Probes POST /CourseFinder/GetAllDropDownList/ to confirm Ajax API health.
         """
+        # Step 1: Touch ASP.NET session state to refresh sliding expiration timer
+        portal_ok = False
+        try:
+            portal_ok = await self.probe_portal()
+        except Exception as p_err:
+            logger.debug(f"Heartbeat portal probe warning: {p_err}")
+
+        # Step 2: Query dropdown list endpoint
         session = await self.get_session()
         payload = {"Campusno": str(campus_no)}
         headers = self._get_base_headers()
@@ -206,9 +235,13 @@ class DLSUApiClient:
                 if resp.status == 200:
                     logger.debug("DLSU Keep-Alive heartbeat successful.")
                     return True
+                if portal_ok and resp.status not in (401, 403):
+                    return True
                 logger.warning(f"Heartbeat responded with HTTP {resp.status}")
                 return False
         except Exception as e:
+            if portal_ok:
+                return True
             logger.error(f"Heartbeat failed: {e}")
             return False
 
@@ -330,25 +363,32 @@ class DLSUApiClient:
 
     async def probe_portal(self) -> bool:
         """
-        Probes main CourseFinder portal page to refresh cookies/tokens and verify gateway connectivity.
+        Probes main CourseFinder portal page with full authentication headers
+        to refresh ASP.NET session sliding expiration and capture updated verification tokens.
         """
         session = await self.get_session()
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        }
+        headers = self._get_base_headers()
+        headers["Accept"] = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
         try:
             async with session.get(DLSU_PORTAL_URL, headers=headers, allow_redirects=True) as resp:
                 await self._handle_response_cookies(resp)
                 if resp.status == 200:
                     text = await resp.text()
+                    if "<!DOCTYPE" in text and ("login" in str(resp.url).lower() or "signin" in str(resp.url).lower()):
+                        logger.warning(f"Probe portal redirected to login: {resp.url}")
+                        return False
                     match = re.search(r'name=["\']__RequestVerificationToken["\']\s+type=["\']hidden["\']\s+value=["\']([^"\']+)["\']', text)
-                    if match and "__RequestVerificationToken" not in self.cookies:
-                        self.cookies["__RequestVerificationToken"] = match.group(1)
-                        if self.on_cookie_update:
-                            await self.on_cookie_update(self.cookies)
+                    if match and match.group(1):
+                        tok = match.group(1)
+                        if self.cookies.get("__RequestVerificationToken") != tok:
+                            self.cookies["__RequestVerificationToken"] = tok
+                            if self.on_cookie_update:
+                                await self.on_cookie_update(self.cookies)
                     return True
+                elif resp.status in (401, 403):
+                    return False
                 return False
         except Exception as e:
             logger.error(f"Probe portal failed: {e}")
             return False
+
