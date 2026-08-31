@@ -161,6 +161,10 @@ class WatchdogEngine:
                         self.consecutive_errors = 0
                         await self._log_heartbeat_pulse(200, latency_ms)
 
+                        # Periodic Auto-Discovery of New Courses from DLSU (every 30 heartbeats = 30 minutes)
+                        if self.heartbeat_count % 30 == 0:
+                            asyncio.create_task(self.auto_discover_new_courses())
+
                         # Proactive 6-Hour Session Age Notice
                         if time.time() - self.session_connected_time > 21600 and not self.has_sent_6h_warning:
                             self.has_sent_6h_warning = True
@@ -174,6 +178,56 @@ class WatchdogEngine:
                 await self._handle_disconnect(f"Heartbeat exception: {e}")
 
             await asyncio.sleep(self.heartbeat_interval)
+
+    async def auto_discover_new_courses(self) -> tuple[int, int]:
+        """
+        Background Auto-Discovery Engine:
+        Fetches full catalog from DLSU CourseFinder.
+        - Automatically saves all courses in course_catalog.
+        - If GE, LC, SAS, LASARE, NSTP (is_ge_lc == True), adds to 24/7 active monitoring pool.
+        - If college major (is_ge_lc == False), saves in catalog and only activates in 15s pool if on a user watchlist.
+        Returns: (new_ge_lc_count, new_college_count)
+        """
+        if not self.is_connected or self.session_expired:
+            return 0, 0
+
+        auth = await self.db.get_master_auth()
+        campus_no = auth.get("campus_no") or 7 if auth else 7
+        academic_session = auth.get("academic_session") or 155 if auth else 155
+
+        try:
+            catalog = await self.api.fetch_course_catalog(campus_no=campus_no, academic_session=academic_session)
+            if not catalog:
+                return 0, 0
+
+            watchlisted_codes = await self.db.get_all_watchlisted_course_codes()
+            ge_lc_count = 0
+            college_count = 0
+
+            for item in catalog:
+                cid = str(item["course_id"]).strip()
+                code = str(item["course_code"]).strip().upper()
+                name = str(item.get("course_name", "")).strip()
+
+                await self.db.upsert_catalog_course(cid, code, name, academic_session)
+
+                classification = classify_course(code)
+                if classification.is_ge_lc:
+                    # 24/7 Universal Monitoring Pool
+                    await self.db.add_monitored_course(cid, code, name, added_by="AutoDiscovery (24/7 GE/LC)")
+                    ge_lc_count += 1
+                elif code in watchlisted_codes:
+                    # On-Demand Student Watchlist
+                    await self.db.add_monitored_course(cid, code, name, added_by="AutoWatchlistResolver")
+                    college_count += 1
+                else:
+                    college_count += 1
+
+            logger.info(f"Auto-Discovery sync complete: {ge_lc_count} GE/LC courses, {college_count} college courses.")
+            return ge_lc_count, college_count
+        except Exception as e:
+            logger.debug(f"Auto-discovery check error: {e}")
+            return 0, 0
 
     async def _send_proactive_session_notice(self):
         """Sends an early notice to #🚨-admin-disconnects when cookies are 6+ hours old."""

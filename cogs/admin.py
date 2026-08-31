@@ -450,22 +450,16 @@ class AdminCog(commands.Cog, name="Admin"):
         academic_session = auth.get("academic_session") or 155 if auth else 155
 
         try:
-            catalog = await self.engine.api.fetch_course_catalog(
-                campus_no=campus_no,
-                academic_session=academic_session,
-            )
-            count = 0
-            for item in catalog:
-                cid = item["course_id"]
-                code = item["course_code"]
-                name = item.get("course_name", "")
-                await self.db.upsert_catalog_course(cid, code, name)
-                # Auto-add all catalog courses into global monitoring pool for live broadcasts
-                await self.db.add_monitored_course(cid, code, name, added_by="Catalog Sync")
-                count += 1
+            ge_lc_count, college_count = await self.engine.auto_discover_new_courses()
+            total_count = ge_lc_count + college_count
+            active_pool = len(await self.db.get_monitored_courses(active_only=True))
 
             # Save raw catalog dump for inspection and debugging
             try:
+                auth = await self.db.get_master_auth()
+                campus_no = auth.get("campus_no") or 7 if auth else 7
+                academic_session = auth.get("academic_session") or 155 if auth else 155
+                catalog = await self.engine.api.fetch_course_catalog(campus_no=campus_no, academic_session=academic_session)
                 with open(CATALOG_RAW_DUMP_PATH, "w", encoding="utf-8") as f:
                     json.dump({"synced_at": datetime.now(timezone.utc).isoformat(), "total_count": len(catalog), "courses": catalog}, f, indent=2)
             except Exception as dump_err:
@@ -474,8 +468,10 @@ class AdminCog(commands.Cog, name="Admin"):
             await msg.edit(
                 content=(
                     f"✅ **Catalog synchronization complete!**\n"
-                    f"> 📚 **Total Courses Synced:** `{count}`\n"
-                    f"> 🏛️ **Live Broadcast Feeds:** All `{count}` courses are now being monitored and will stream slot updates live to `#🎯-ge-lc-feed` and all College Channels!"
+                    f"> 📚 **Total Courses Indexed:** `{total_count}`\n"
+                    f"> 🎯 **24/7 Universal Monitored Pool:** `{ge_lc_count}` GE/LC/SAS/LASARE subjects\n"
+                    f"> 🏛️ **College Major Courses:** `{college_count}` subjects indexed (monitored on-demand via `!watch`)\n"
+                    f"> ⚡ **Current Active 15s Watchdog Pool:** `{active_pool}` courses"
                 )
             )
         except Exception as e:
