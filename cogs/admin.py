@@ -719,13 +719,14 @@ class AdminCog(commands.Cog, name="Admin"):
         description="(Admin only) Browse all sections currently with open slots using interactive pagination.",
     )
     @is_admin()
-    async def sweep_command(self, ctx: commands.Context, filter_keyword: str | None = None):
+    async def sweep_command(self, ctx: commands.Context, filter_keyword: str = ""):
         """
         Displays an interactive pagination view of all sections with open slots (>0).
         Syntax: !sweep, !sweep CCS, !sweep GEWORLD
         """
         await ctx.defer()
-        query_kw = f"%{filter_keyword.strip().upper()}%" if filter_keyword else "%"
+        kw_clean = (filter_keyword or "").strip().upper()
+        query_kw = f"%{kw_clean}%" if kw_clean else "%"
         async with aiosqlite.connect(self.db.db_path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute("""
@@ -847,8 +848,8 @@ class SweepPaginationView(discord.ui.View):
     async def view_logs_command(
         self,
         ctx: commands.Context,
-        param1: str | None = "watchdog",
-        param2: int | None = 15,
+        param1: str = "watchdog",
+        param2: str = "15",
     ):
         """
         Displays recent log file lines for watchdog, autodiscovery, drops, dms, heartbeats, or scraper.
@@ -865,13 +866,16 @@ class SweepPaginationView(discord.ui.View):
         }
 
         # Flexible argument handling (e.g. !logs 20 or !logs drops 20)
-        p1 = (param1 or "watchdog").strip().lower()
+        p1 = str(param1 or "watchdog").strip().lower()
         if p1.isdigit():
             target_log = "watchdog"
             lines_count = int(p1)
         else:
             target_log = p1
-            lines_count = param2 if param2 else 15
+            try:
+                lines_count = int(param2) if param2 else 15
+            except (ValueError, TypeError):
+                lines_count = 15
 
         if target_log not in log_map:
             valid_types = ", ".join([f"`{k}`" for k in log_map.keys()])
