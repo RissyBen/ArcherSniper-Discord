@@ -41,59 +41,55 @@ COLLEGE_PREFIX_MAP: dict[str, tuple[str, list[str]]] = {
     "CCS": (
         "College of Computer Studies",
         [
-            "CCPROG", "CSARCH", "STSWENG", "STALGCM", "MOBDEVE", "INSSYS",
-            "CSMATH", "DATAALG", "NETCOMM", "DISMATH", "COMPORG", "CSSYSAL",
-            "THS-CS", "PRC-CS", "IS-PROJ", "ANIMAT", "GD-PROJ", "CCINFO",
-            "CCAPDEV", "CCDSALG", "CSINTSY", "NSCOM", "CSMODEL", "STADVDB",
-            "SE-PROJ", "IT-PROJ", "CSADPRG", "ST-MATH", "CCICOMP",
+            "CC", "CS", "ST", "IT", "IS", "GD", "WD", "NS", "MOB", "DAT",
+            "NET", "COMP", "THS", "PRC", "ANIM", "CY",
         ],
     ),
     "RVRCOB": (
         "RVR College of Business",
         [
-            "DSOM", "FINA", "MARKET", "ACY", "COB", "MODENMA", "BUSNOTE",
-            "COBLAW", "TAXAT", "ENTREP", "MANARES", "ORGBEH", "STRATMA",
-            "OPEMAN", "CORPGOV", "ACC", "FIN", "MKT", "BSA", "BSIT",
-            "ADVACC", "AUDPRAC", "INTACC", "COSTACC", "TREASUR",
+            "DSOM", "FIN", "MKT", "MARKET", "ACY", "COB", "MODENMA", "BUS",
+            "COBLAW", "TAX", "ENTREP", "MAN", "ORG", "STRAT", "OPE",
+            "CORP", "ACC", "BSA", "BSIT", "AUD", "COST", "TREAS", "LAW",
         ],
     ),
     "GCOE": (
         "Gokongwei College of Engineering",
         [
             "ENG", "MEM", "CIV", "ECE", "CHE", "IE", "MEE", "LBY",
-            "CPE", "MTHENG", "ENGSTAT", "ENGPHYS", "ENGCAD", "THERMO",
-            "DIFFEQN", "NUMMETH", "ENVIENG", "MATERIA", "CIRCUIT",
+            "CPE", "MTHENG", "ENGSTAT", "ENGPHYS", "ENGCAD", "THERM",
+            "DIFF", "NUM", "ENVI", "MATERIA", "CIRC",
         ],
     ),
     "CLA": (
         "College of Liberal Arts",
         [
-            "AB", "PSY", "HIS", "LIT", "PHIL", "PHILO", "POLIS", "POLISCI", "SOCIO",
-            "COMM", "DEVSTUD", "HUMA", "INTSTUD", "MALIKHA", "FORLANG",
-            "JAPLANG", "CHNLANG", "SPANISH", "FRENCHN", "GERMAN",
-            "THEOLOGY", "RELIGIO", "FILIPIN", "WRITCOM",
+            "AB", "PSY", "HIS", "LIT", "PHIL", "PHL", "POL", "SOC",
+            "COM", "DEV", "HUM", "INT", "MALIK", "FOR", "JAP", "CHN",
+            "SPA", "FRE", "GER", "KOR", "ITL", "RUS", "THEO", "REL",
+            "FIL", "WRIT",
         ],
     ),
     "COS": (
         "College of Science",
         [
-            "BIO", "CHEM", "PHY", "MTH", "SCIMAT", "ZOO", "BOT",
-            "MATH", "ALGEBR", "TRIGON", "CALCUL", "GENBIO", "GENCHEM",
-            "GENPHYS", "ANALYTC", "ORCHEM", "BIOCHEM", "ECOLOGY",
+            "BIO", "CHEM", "CHM", "PHY", "MTH", "SCIMAT", "ZOO", "BOT",
+            "MATH", "ALG", "TRIG", "CALC", "GENB", "GENC", "GENP",
+            "ANAL", "ORCH", "BIOCHEM", "ECOL",
         ],
     ),
     "BAGCED": (
         "Br. Andrew Gonzalez College of Education",
         [
             "CED", "EDM", "EDF", "ECE", "SED", "SPE", "PED", "EDUC",
-            "TEACHIN", "CURRIC", "CHILDDV", "SPECED", "COUNSEL",
+            "TEA", "CUR", "CHIL", "COUN",
         ],
     ),
     "SOE": (
         "School of Economics",
         [
-            "ECO", "ECON", "APECO", "MINECO", "MARECO", "QUANTEC",
-            "DEVECO", "INTECON", "LABOREC", "PUBFISC", "MONETAR",
+            "ECO", "ECON", "APECO", "MINECO", "MARECO", "QUANT",
+            "DEVECO", "INTECO", "LABOR", "PUBFISC", "MONET",
         ],
     ),
 }
