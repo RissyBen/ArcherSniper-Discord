@@ -715,115 +715,37 @@ class AdminCog(commands.Cog, name="Admin"):
 
     @commands.hybrid_command(
         name="sweep",
-        aliases=["rescan", "broadcastdrops"],
-        description="(Admin only) Immediately scans and broadcasts all currently open sections to feeds & DMs.",
+        aliases=["opensections", "checkopen", "browseopen"],
+        description="(Admin only) Browse all sections currently with open slots using interactive pagination.",
     )
     @is_admin()
-    async def sweep_command(self, ctx: commands.Context):
+    async def sweep_command(self, ctx: commands.Context, filter_keyword: str | None = None):
         """
-        Scans all courses in database that have open slots (>0) and broadcasts them live across Discord feeds and student DMs.
-        Syntax: !sweep
+        Displays an interactive pagination view of all sections with open slots (>0).
+        Syntax: !sweep, !sweep CCS, !sweep GEWORLD
         """
         await ctx.defer()
+        query_kw = f"%{filter_keyword.strip().upper()}%" if filter_keyword else "%"
         async with aiosqlite.connect(self.db.db_path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute("""
                 SELECT course_id, course_code, section_name, capacity, enlisted, open_slots, teacher, schedule
                 FROM section_states
-                WHERE open_slots > 0
+                WHERE open_slots > 0 AND (UPPER(course_code) LIKE ? OR UPPER(section_name) LIKE ?)
                 ORDER BY course_code, section_name;
-            """) as cursor:
+            """, (query_kw, query_kw)) as cursor:
                 open_sections = await cursor.fetchall()
 
         if not open_sections:
-            await ctx.send("ℹ️ No sections with open slots found in the database. Run `!sync` or wait for the scraper.")
+            target_desc = f" matching `{filter_keyword}`" if filter_keyword else ""
+            await ctx.send(f"ℹ️ No sections with open slots found in the database{target_desc}.")
             return
 
-        cycle_feed_changes: dict[str, list[dict]] = {}
-
-        for sec in open_sections:
-            code = sec["course_code"]
-            sec_name = sec["section_name"]
-            open_s = sec["open_slots"]
-            cap = sec["capacity"]
-            enl = sec["enlisted"]
-            teacher = sec["teacher"] or "TBA"
-            sched = sec["schedule"] or "TBA"
-
-            # 1. Dispatch DM alerts to students watching this course
-            await self.engine._dispatch_personal_dms(
-                course_code=code,
-                course_name="",
-                section_name=sec_name,
-                open_slots=open_s,
-                capacity=cap,
-                enlisted=enl,
-                teacher=teacher,
-                schedule=sched,
-                prev_open_slots=0,
-            )
-
-            # 2. Collect for public feed channels
-            classification = classify_course(code)
-            change_item = {
-                "course_code": code,
-                "course_name": "",
-                "section_name": sec_name,
-                "open_slots": open_s,
-                "capacity": cap,
-                "enlisted": enl,
-                "teacher": teacher,
-                "schedule": sched,
-                "prev_open_slots": 0,
-                "category_label": classification.college_name or "DLSU Feed",
-            }
-            target_channels = set()
-            if classification.is_ge_lc and self.engine.ge_lc_active:
-                target_channels.add("ge_lc")
-            col_key = classification.feed_channel_key
-            if col_key and col_key != "ge_lc":
-                target_channels.add(col_key)
-
-            for ch_k in target_channels:
-                cycle_feed_changes.setdefault(ch_k, []).append(change_item)
-
-        # Broadcast consolidated batch embeds to each feed channel (chunked so all open sections are delivered)
-        guild_ids = await self.db.get_all_configured_guilds()
-        if cycle_feed_changes:
-            for feed_key, changes in cycle_feed_changes.items():
-                if not changes:
-                    continue
-                label = changes[0].get("category_label", "DLSU Feed")
-                # Split changes into chunks of 12 items so every open section is sent without hitting Discord limits
-                for i in range(0, len(changes), 12):
-                    chunk = changes[i:i + 12]
-                    page_no = (i // 12) + 1
-                    tot_p = (len(changes) + 11) // 12
-                    suffix = f" (Part {page_no}/{tot_p})" if tot_p > 1 else ""
-                    batch_embed = create_batched_feed_drop_embed(f"{label}{suffix}", chunk)
-
-                    for g_id in guild_ids:
-                        channels = await self.db.get_server_channels(g_id)
-                        ch_id = channels.get(feed_key)
-                        if ch_id:
-                            ch = self.bot.get_channel(ch_id)
-                            if not ch:
-                                try:
-                                    ch = await self.bot.fetch_channel(ch_id)
-                                except Exception:
-                                    ch = None
-                            if ch:
-                                try:
-                                    await ch.send(embed=batch_embed, allowed_mentions=discord.AllowedMentions.none())
-                                    logger.info(f"📢 Broadcasted sweep chunk to #{getattr(ch, 'name', ch_id)} ({feed_key})")
-                                except Exception as ex:
-                                    logger.warning(f"Could not send sweep batch to {ch_id}: {ex}")
-
-        # Render interactive paginated view with Next/Prev buttons for the admin
+        # Render clean interactive paginated view with Next/Prev buttons in the current channel
         dict_open_sections = [dict(s) for s in open_sections]
         view = SweepPaginationView(
             open_sections=dict_open_sections,
-            feeds_updated=len(cycle_feed_changes),
+            feeds_updated=0,
             user_id=ctx.author.id,
             current_page=1,
             per_page=10,
@@ -832,7 +754,7 @@ class AdminCog(commands.Cog, name="Admin"):
             open_sections=dict_open_sections,
             page=1,
             per_page=10,
-            feeds_updated=len(cycle_feed_changes),
+            feeds_updated=0,
         )
         await ctx.send(embed=embed, view=view)
 
