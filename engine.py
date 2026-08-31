@@ -48,10 +48,13 @@ logger = logging.getLogger("ArcherSniper.Engine")
 def _append_log_line(file_path, line: str):
     """Appends a timestamped line to a dedicated log file safely."""
     try:
-        with open(file_path, "a", encoding="utf-8", errors="ignore") as f:
+        from pathlib import Path
+        p = Path(file_path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with open(p, "a", encoding="utf-8", errors="ignore") as f:
             f.write(line.strip() + "\n")
     except Exception as ex:
-        logger.debug(f"Log write error for {file_path}: {ex}")
+        logger.warning(f"Log write error for {file_path}: {ex}")
 
 
 class WatchdogEngine:
@@ -134,6 +137,11 @@ class WatchdogEngine:
         if self.heartbeat_task is None or self.heartbeat_task.done():
             self.heartbeat_task = asyncio.create_task(self._heartbeat_loop(), name="ArcherSniper_Heartbeat")
         logger.info("Background watchdog polling and keep-alive loops started.")
+        ts_init = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        _append_log_line(
+            WATCHDOG_CYCLES_LOG_PATH,
+            f"[{ts_init}] SYSTEM -> Watchdog Engine started (Interval: {self.poll_interval}s, Active: {self.bot_active}, Session: {'CONNECTED' if self.is_connected else 'DISCONNECTED'})"
+        )
 
     async def stop_tasks(self):
         """Stops background tasks gracefully."""
