@@ -157,3 +157,25 @@ async def test_disconnected_session_suppresses_alerts(mock_engine):
     await mock_engine._process_section_delta("101", "STSWENG", "Software Engineering", sec_data)
     mock_engine._dispatch_personal_dms.assert_not_called()
     mock_engine._broadcast_to_feeds.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_brand_new_section_triggers_alert_after_baseline(mock_engine):
+    """When a brand-new section is added mid-enlistment (after Cycle 1) with open slots, it alerts immediately."""
+    mock_engine._dispatch_personal_dms = AsyncMock()
+    mock_engine._broadcast_to_feeds = AsyncMock()
+    mock_engine.total_poll_cycles = 5  # Beyond initial baseline cycle
+
+    new_sec_data = {
+        "section_name": "S15",
+        "capacity": 45,
+        "enlisted": 0,
+        "open_slots": 45,
+        "teacher": "New Instructor",
+        "schedule": "MW 14:30",
+    }
+
+    await mock_engine._process_section_delta("101", "STSWENG", "Software Engineering", new_sec_data)
+    mock_engine._dispatch_personal_dms.assert_called_once()
+    mock_engine._broadcast_to_feeds.assert_called_once()
+

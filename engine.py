@@ -364,6 +364,10 @@ class WatchdogEngine:
         self.last_poll_time = datetime.now(timezone.utc)
         self.total_poll_cycles += 1
 
+        # Periodic Auto-Discovery of New Subjects from DLSU (every 4 cycles = ~60 seconds)
+        if self.total_poll_cycles % 4 == 0:
+            asyncio.create_task(self.auto_discover_new_courses())
+
         cycle_lines = []
         cycle_dump = {
             "cycle": self.total_poll_cycles,
@@ -525,9 +529,13 @@ class WatchdogEngine:
             schedule=sched,
         )
 
-        # Establish baseline on first poll without alerting
+        # Establish baseline on first cycle without alerting.
+        # If a brand-new section appears in subsequent cycles with open slots, treat as a new drop from 0.
         if prev_open is None:
-            return
+            if self.total_poll_cycles > 1 and new_open > 0:
+                prev_open = 0
+            else:
+                return
 
         # Fail-safe check
         if self.session_expired or not self.is_connected or not self.bot_active:
