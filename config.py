@@ -32,6 +32,18 @@ DUPLICATES_LOG_PATH = LOGS_DIR / "duplicate_alerts.log"
 AUTODISCOVERY_LOG_PATH = LOGS_DIR / "auto_discovery.log"
 WATCHDOG_CYCLES_LOG_PATH = LOGS_DIR / "watchdog_cycles.log"
 
+# Ensure all log files exist on disk for tail commands
+for _p in (
+    SYSTEM_LOG_PATH,
+    SCRAPER_LOG_PATH,
+    SLOT_DROPS_LOG_PATH,
+    DM_DISPATCH_LOG_PATH,
+    HEARTBEAT_LOG_PATH,
+    AUTODISCOVERY_LOG_PATH,
+    WATCHDOG_CYCLES_LOG_PATH,
+):
+    _p.touch(exist_ok=True)
+
 # Discord Bot Settings
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "").strip()
 COMMAND_PREFIX = os.getenv("COMMAND_PREFIX", "!").strip()
