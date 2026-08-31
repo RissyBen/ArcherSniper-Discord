@@ -683,7 +683,7 @@ class AdminCog(commands.Cog, name="Admin"):
 
     @commands.hybrid_command(
         name="scraperlog",
-        aliases=["logs", "fetchlog"],
+        aliases=["scraperlogs", "fetchlog"],
         description="(Admin only) View recent scraper fetch logs from the 15-second loop.",
     )
     @is_admin()

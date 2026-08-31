@@ -659,7 +659,7 @@ class SniperCog(commands.Cog, name="Sniper"):
     @commands.hybrid_command(
         name="courses",
         aliases=["allmonitored", "monitoredcourses", "pool", "activecourses"],
-        description="View all courses currently being monitored 24/7 across the server with multi-page navigation.",
+        description="View all courses currently being monitored.",
     )
     @check_gatekeeper()
     async def courses_command(self, ctx: commands.Context):
@@ -695,7 +695,7 @@ class SniperCog(commands.Cog, name="Sniper"):
     @commands.hybrid_command(
         name="courseinfo",
         aliases=["sections", "inspectcourse", "sectioninfo"],
-        description="Inspect all sections, capacities, professors, and schedules for any DLSU course with interactive pagination.",
+        description="Inspect sections, capacities, professors, and schedules for any DLSU course.",
     )
     @check_gatekeeper()
     async def course_info_command(self, ctx: commands.Context, course_code: str):
