@@ -26,6 +26,7 @@ from utils.embeds import (
     get_courseinfo_page_count,
     create_system_status_overview_embed,
 )
+from utils.course_classifier import classify_course
 
 logger = logging.getLogger("ArcherSniper.SniperCog")
 
@@ -612,8 +613,8 @@ class SniperCog(commands.Cog, name="Sniper"):
             # High-level clean status summary
             all_monitored = await self.db.get_monitored_courses(active_only=True)
             total_monitored = len(all_monitored)
-            ge_lc_count = sum(1 for c in all_monitored if c.get("is_ge_lc"))
-            college_count = total_monitored - ge_lc_count
+            ge_lc_count = sum(1 for c in all_monitored if classify_course(c.get("course_code", "")).is_ge_lc)
+            college_count = max(0, total_monitored - ge_lc_count)
 
             all_sections = await self.db.get_all_section_states()
             total_sections_count = len(all_sections)
