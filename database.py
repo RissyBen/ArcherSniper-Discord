@@ -424,11 +424,21 @@ class Database:
         course_name: str = "",
         added_by: str = "System",
     ) -> bool:
-        """Adds a course to the active monitoring pool."""
+        """Adds a course to the active monitoring pool, preventing higher duplicate IDs from overwriting active IDs."""
         clean_code = course_code.strip().upper()
         clean_id = str(course_id).strip()
         async with aiosqlite.connect(self.db_path) as db:
-            # Delete any existing row with matching course_code but different course_id to avoid duplication
+            db.row_factory = aiosqlite.Row
+            async with db.execute("SELECT course_id FROM monitored_courses WHERE UPPER(course_code) = ?;", (clean_code,)) as cur:
+                existing = await cur.fetchone()
+                if existing:
+                    existing_id = str(existing["course_id"]).strip()
+                    if existing_id.isdigit() and clean_id.isdigit():
+                        if int(clean_id) > int(existing_id):
+                            # Retain active lower ID; ignore duplicate higher historical ID
+                            return True
+
+            # Delete any existing row with matching course_code but different course_id
             await db.execute("""
                 DELETE FROM monitored_courses WHERE UPPER(course_code) = ? AND course_id != ?;
             """, (clean_code, clean_id))

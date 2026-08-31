@@ -215,20 +215,32 @@ class WatchdogEngine:
             ge_lc_count = 0
             college_count = 0
 
-            for item in catalog:
+            # Sort catalog by integer course_id ASC to ensure active lower IDs are processed first
+            sorted_catalog = sorted(
+                catalog,
+                key=lambda x: int(x["course_id"]) if str(x.get("course_id", "")).isdigit() else 999999
+            )
+
+            seen_discovery_codes = set()
+            for item in sorted_catalog:
                 cid = str(item["course_id"]).strip()
                 code = str(item["course_code"]).strip().upper()
                 name = str(item.get("course_name", "")).strip()
 
                 await self.db.upsert_catalog_course(cid, code, name, academic_session)
 
+                if code in seen_discovery_codes:
+                    # Skip duplicate higher/historical IDs (e.g. 12160 for SAS2000, 10987 for DSILYTC)
+                    continue
+                seen_discovery_codes.add(code)
+
                 classification = classify_course(code)
                 if classification.is_ge_lc:
-                    # 24/7 Universal Monitoring Pool
+                    # 24/7 Universal Monitoring Pool (Guaranteed Active ID)
                     await self.db.add_monitored_course(cid, code, name, added_by="AutoDiscovery (24/7 GE/LC)")
                     ge_lc_count += 1
                 elif code in watchlisted_codes:
-                    # On-Demand Student Watchlist
+                    # On-Demand Student Watchlist (Guaranteed Active ID)
                     await self.db.add_monitored_course(cid, code, name, added_by="AutoWatchlistResolver")
                     college_count += 1
                 else:
