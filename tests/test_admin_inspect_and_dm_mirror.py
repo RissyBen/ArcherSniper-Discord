@@ -146,3 +146,40 @@ def test_admin_course_inspection_embed():
     assert "MW 09:15-10:45" in embed.fields[0].value
     assert "Section S12" in embed.fields[1].name
     assert "FULL" in embed.fields[1].value
+
+
+@pytest.mark.asyncio
+async def test_view_logs_command_variations(tmp_path):
+    from cogs.admin import AdminCog
+    from config import WATCHDOG_CYCLES_LOG_PATH
+
+    # Create dummy watchdog log
+    WATCHDOG_CYCLES_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(WATCHDOG_CYCLES_LOG_PATH, "w", encoding="utf-8") as f:
+        f.write("[2026-08-31 12:00:00 UTC] Cycle #0001 | Polled 42 courses in 1.2s\n")
+        f.write("[2026-08-31 12:00:15 UTC] Cycle #0002 | Polled 42 courses in 1.1s\n")
+
+    mock_bot = MagicMock()
+    mock_ctx = MagicMock()
+    mock_ctx.defer = AsyncMock()
+    mock_ctx.send = AsyncMock()
+    mock_ctx.author.id = 673532405134655509
+
+    cog = AdminCog(mock_bot, None, None)
+
+    # 1. Test !logs (defaults)
+    await cog.view_logs_command.callback(cog, mock_ctx, "watchdog", "15")
+    mock_ctx.send.assert_called()
+    embed = mock_ctx.send.call_args[1]["embed"]
+    assert "Cycle" in embed.description
+
+    # 2. Test !logs 10
+    mock_ctx.send.reset_mock()
+    await cog.view_logs_command.callback(cog, mock_ctx, "10", "15")
+    mock_ctx.send.assert_called()
+
+    # 3. Test !logs watchdog 10
+    mock_ctx.send.reset_mock()
+    await cog.view_logs_command.callback(cog, mock_ctx, "watchdog", "10")
+    mock_ctx.send.assert_called()
+

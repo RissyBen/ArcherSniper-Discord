@@ -69,6 +69,82 @@ def is_server_owner():
     return commands.check(predicate)
 
 
+class SweepPaginationView(discord.ui.View):
+    """Interactive Next/Previous button pagination view for !sweep command."""
+    def __init__(
+        self,
+        open_sections: list[dict],
+        feeds_updated: int,
+        user_id: int | None = None,
+        current_page: int = 1,
+        per_page: int = 10,
+    ):
+        super().__init__(timeout=300)
+        import math
+        self.open_sections = open_sections
+        self.feeds_updated = feeds_updated
+        self.user_id = user_id
+        self.current_page = current_page
+        self.per_page = per_page
+        self.total_pages = max(1, math.ceil(len(open_sections) / per_page))
+        self._update_buttons()
+
+    def _update_buttons(self):
+        self.clear_items()
+        if self.total_pages <= 1:
+            return
+
+        btn_first = discord.ui.Button(emoji="⏮️", style=discord.ButtonStyle.secondary, disabled=self.current_page <= 1, row=0)
+        btn_first.callback = self._on_first
+
+        btn_prev = discord.ui.Button(label="Prev", emoji="◀️", style=discord.ButtonStyle.primary, disabled=self.current_page <= 1, row=0)
+        btn_prev.callback = self._on_prev
+
+        btn_page = discord.ui.Button(label=f"Page {self.current_page} / {self.total_pages}", style=discord.ButtonStyle.secondary, disabled=True, row=0)
+
+        btn_next = discord.ui.Button(label="Next", emoji="▶️", style=discord.ButtonStyle.primary, disabled=self.current_page >= self.total_pages, row=0)
+        btn_next.callback = self._on_next
+
+        btn_last = discord.ui.Button(emoji="⏭️", style=discord.ButtonStyle.secondary, disabled=self.current_page >= self.total_pages, row=0)
+        btn_last.callback = self._on_last
+
+        self.add_item(btn_first)
+        self.add_item(btn_prev)
+        self.add_item(btn_page)
+        self.add_item(btn_next)
+        self.add_item(btn_last)
+
+    async def _render_page(self, interaction: discord.Interaction):
+        if self.user_id and interaction.user.id != self.user_id:
+            await interaction.response.send_message("❌ This is not your menu.", ephemeral=True)
+            return
+
+        self._update_buttons()
+        embed = create_sweep_results_embed(
+            open_sections=self.open_sections,
+            page=self.current_page,
+            per_page=self.per_page,
+            feeds_updated=self.feeds_updated,
+        )
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    async def _on_first(self, interaction: discord.Interaction):
+        self.current_page = 1
+        await self._render_page(interaction)
+
+    async def _on_prev(self, interaction: discord.Interaction):
+        self.current_page = max(1, self.current_page - 1)
+        await self._render_page(interaction)
+
+    async def _on_next(self, interaction: discord.Interaction):
+        self.current_page = min(self.total_pages, self.current_page + 1)
+        await self._render_page(interaction)
+
+    async def _on_last(self, interaction: discord.Interaction):
+        self.current_page = self.total_pages
+        await self._render_page(interaction)
+
+
 class AdminCog(commands.Cog, name="Admin"):
     def __init__(self, bot: commands.Bot, db: Database, engine: WatchdogEngine):
         self.bot = bot
@@ -758,82 +834,6 @@ class AdminCog(commands.Cog, name="Admin"):
             feeds_updated=0,
         )
         await ctx.send(embed=embed, view=view)
-
-
-class SweepPaginationView(discord.ui.View):
-    """Interactive Next/Previous button pagination view for !sweep command."""
-    def __init__(
-        self,
-        open_sections: list[dict],
-        feeds_updated: int,
-        user_id: int | None = None,
-        current_page: int = 1,
-        per_page: int = 10,
-    ):
-        super().__init__(timeout=300)
-        import math
-        self.open_sections = open_sections
-        self.feeds_updated = feeds_updated
-        self.user_id = user_id
-        self.current_page = current_page
-        self.per_page = per_page
-        self.total_pages = max(1, math.ceil(len(open_sections) / per_page))
-        self._update_buttons()
-
-    def _update_buttons(self):
-        self.clear_items()
-        if self.total_pages <= 1:
-            return
-
-        btn_first = discord.ui.Button(emoji="⏮️", style=discord.ButtonStyle.secondary, disabled=self.current_page <= 1, row=0)
-        btn_first.callback = self._on_first
-
-        btn_prev = discord.ui.Button(label="Prev", emoji="◀️", style=discord.ButtonStyle.primary, disabled=self.current_page <= 1, row=0)
-        btn_prev.callback = self._on_prev
-
-        btn_page = discord.ui.Button(label=f"Page {self.current_page} / {self.total_pages}", style=discord.ButtonStyle.secondary, disabled=True, row=0)
-
-        btn_next = discord.ui.Button(label="Next", emoji="▶️", style=discord.ButtonStyle.primary, disabled=self.current_page >= self.total_pages, row=0)
-        btn_next.callback = self._on_next
-
-        btn_last = discord.ui.Button(emoji="⏭️", style=discord.ButtonStyle.secondary, disabled=self.current_page >= self.total_pages, row=0)
-        btn_last.callback = self._on_last
-
-        self.add_item(btn_first)
-        self.add_item(btn_prev)
-        self.add_item(btn_page)
-        self.add_item(btn_next)
-        self.add_item(btn_last)
-
-    async def _render_page(self, interaction: discord.Interaction):
-        if self.user_id and interaction.user.id != self.user_id:
-            await interaction.response.send_message("❌ This is not your menu.", ephemeral=True)
-            return
-
-        self._update_buttons()
-        embed = create_sweep_results_embed(
-            open_sections=self.open_sections,
-            page=self.current_page,
-            per_page=self.per_page,
-            feeds_updated=self.feeds_updated,
-        )
-        await interaction.response.edit_message(embed=embed, view=self)
-
-    async def _on_first(self, interaction: discord.Interaction):
-        self.current_page = 1
-        await self._render_page(interaction)
-
-    async def _on_prev(self, interaction: discord.Interaction):
-        self.current_page = max(1, self.current_page - 1)
-        await self._render_page(interaction)
-
-    async def _on_next(self, interaction: discord.Interaction):
-        self.current_page = min(self.total_pages, self.current_page + 1)
-        await self._render_page(interaction)
-
-    async def _on_last(self, interaction: discord.Interaction):
-        self.current_page = self.total_pages
-        await self._render_page(interaction)
 
     # ==========================================
     # !logs / !viewlogs (REAL-TIME LOG INSPECTOR)
