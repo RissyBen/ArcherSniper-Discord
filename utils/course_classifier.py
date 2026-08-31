@@ -26,9 +26,7 @@ GE_EXACT_CODES = {
     "LASARE2", "LASARE3", "SAS1000", "SAS2000", "SAS3000",
 }
 GE_PREFIXES = (
-    "GEART", "GETHI", "GEMAT", "GEFIL", "GERPH", "GERZA",
-    "GEPCO", "GESTS", "GEUSE", "GESPO", "GEDAN", "GEFTW",
-    "GREAT", "NSTP", "LASARE", "SAS",
+    "GE", "NSTP", "LASARE", "SAS", "GREAT",
 )
 
 # Lasallian Core (LC) Codes & Prefixes
@@ -107,8 +105,12 @@ def classify_course(course_code: str) -> CourseClassification:
     """
     clean = re.sub(r"[^A-Z0-9-]", "", course_code.strip().upper())
 
-    # 1. Check General Education (GE)
-    if clean in GE_EXACT_CODES or any(clean.startswith(p) for p in GE_PREFIXES):
+    # 1. Check General Education (GE) - Exclude GEN (General Science e.g. GENCHEM)
+    if (
+        clean in GE_EXACT_CODES
+        or (clean.startswith("GE") and not clean.startswith("GEN"))
+        or any(clean.startswith(p) for p in ("NSTP", "LASARE", "SAS", "GREAT"))
+    ):
         return CourseClassification(
             course_code=clean,
             is_ge_lc=True,
