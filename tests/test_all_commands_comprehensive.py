@@ -538,3 +538,70 @@ async def test_channel_manager_setupchannels_and_admin_toggle(full_bot_env):
     await admin_cog.admin_toggle_command.callback(admin_cog, ctx, member="554433")
     ctx.send.assert_called()
 
+
+@pytest.mark.asyncio
+async def test_admin_auth_and_curl_commands(full_bot_env):
+    """Tests !setcurl, !bookmarklet, and !removecurl commands."""
+    cog = full_bot_env["admin_cog"]
+    db = full_bot_env["db"]
+    ctx = create_mock_ctx(is_admin=True)
+
+    # 1. !bookmarklet
+    await cog.bookmarklet_command.callback(cog, ctx)
+    ctx.send.assert_called()
+    assert "Bookmarklet" in ctx.send.call_args[1]["embed"].title
+
+    # 2. !setcurl with valid cookies
+    ctx.send.reset_mock()
+    sample_cookie = "ASP.NET_SessionId=test_sess_999; .ASPXAUTH=test_auth_888; __RequestVerificationToken=tok123"
+    with patch.object(full_bot_env["engine"].api, "send_heartbeat", new_callable=AsyncMock) as mock_hb:
+        mock_hb.return_value = True
+        await cog.setcurl_command.callback(cog, ctx, raw_curl=sample_cookie)
+        ctx.send.assert_called()
+        assert "Master Session Connected Successfully" in ctx.send.call_args[1]["embed"].title
+
+    # 3. !removecurl
+    ctx.send.reset_mock()
+    await cog.remove_curl_command.callback(cog, ctx)
+    ctx.send.assert_called()
+    assert "Master cURL Session Removed" in ctx.send.call_args[1]["embed"].title
+    auth = await db.get_master_auth()
+    assert auth is None or auth.get("status") == "DISCONNECTED"
+    assert not auth or auth.get("cookies") == {}
+
+
+@pytest.mark.asyncio
+async def test_admin_interval_add_remove_and_scraperlog(full_bot_env):
+    """Tests !interval, !add, !remove, and !scraperlog admin commands."""
+    cog = full_bot_env["admin_cog"]
+    db = full_bot_env["db"]
+    engine = full_bot_env["engine"]
+    ctx = create_mock_ctx(is_admin=True)
+
+    # 1. !interval 30s
+    await cog.interval_command.callback(cog, ctx, interval="30s")
+    ctx.send.assert_called()
+    assert engine.poll_interval == 30.0
+
+    # 2. !add CSARCH1
+    ctx.send.reset_mock()
+    await cog.add_command.callback(cog, ctx, courses="CSARCH1")
+    ctx.send.assert_called()
+    assert await db.get_monitored_course("CSARCH1") is not None
+
+    # 3. !remove CSARCH1
+    ctx.send.reset_mock()
+    await cog.remove_command.callback(cog, ctx, course_code="CSARCH1")
+    ctx.send.assert_called()
+    assert await db.get_monitored_course("CSARCH1") is None
+
+    # 4. !scraperlog
+    ctx.send.reset_mock()
+    from config import SCRAPER_LOG_PATH
+    SCRAPER_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(SCRAPER_LOG_PATH, "w", encoding="utf-8") as f:
+        f.write("[2026-08-31 15:00:00 UTC] Scraper fetched 42 courses\n")
+    await cog.scraper_log_command.callback(cog, ctx, lines=10)
+    ctx.send.assert_called()
+
+
