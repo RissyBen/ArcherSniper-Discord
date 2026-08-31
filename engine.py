@@ -466,9 +466,18 @@ class WatchdogEngine:
                 }
             except PermissionError as pe:
                 cycle_lines.append(f"  • [{code}] (ID: {cid}) -> AUTH ERROR: {pe}")
-                logger.warning(f"Permission / session error for {code} ({cid}): {pe}")
-                await self._handle_disconnect(str(pe))
-                break
+                logger.warning(f"Permission / session error on {code} ({cid}): {pe}")
+                # Verify if master session is truly expired or if this was just a transient single-course glitch
+                try:
+                    is_master_alive = await self.api.send_heartbeat()
+                except Exception:
+                    is_master_alive = False
+
+                if not is_master_alive:
+                    await self._handle_disconnect(str(pe))
+                    break
+                else:
+                    logger.info(f"Transient anomaly on {code} ({cid}), but Master Session is verified ACTIVE. Continuing poll cycle.")
             except Exception as e:
                 cycle_lines.append(f"  • [{code}] (ID: {cid}) -> FETCH ERROR: {e}")
                 logger.debug(f"Error fetching {code} ({cid}): {e}")
