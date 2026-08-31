@@ -10,7 +10,17 @@ import aiosqlite
 import discord
 from discord.ext import commands
 
-from config import ADMIN_USER_IDS, ADMIN_ROLE_NAME, SCRAPER_LOG_PATH, CATALOG_RAW_DUMP_PATH
+from config import (
+    ADMIN_USER_IDS,
+    ADMIN_ROLE_NAME,
+    SCRAPER_LOG_PATH,
+    CATALOG_RAW_DUMP_PATH,
+    WATCHDOG_CYCLES_LOG_PATH,
+    AUTODISCOVERY_LOG_PATH,
+    SLOT_DROPS_LOG_PATH,
+    DM_DISPATCH_LOG_PATH,
+    HEARTBEAT_LOG_PATH,
+)
 from database import Database
 from engine import WatchdogEngine
 from utils.curl_parser import parse_curl
@@ -806,6 +816,71 @@ class AdminCog(commands.Cog, name="Admin"):
             level="success",
         )
         await ctx.send(embed=embed)
+
+    # ==========================================
+    # !logs / !viewlogs (REAL-TIME LOG INSPECTOR)
+    # ==========================================
+
+    @commands.hybrid_command(
+        name="logs",
+        aliases=["viewlogs", "viewlog", "showlogs"],
+        description="(Admin only) View recent real-time log entries from the server.",
+    )
+    @is_admin()
+    async def view_logs_command(
+        self,
+        ctx: commands.Context,
+        log_type: str = "watchdog",
+        lines_count: int = 15,
+    ):
+        """
+        Displays recent log file lines for watchdog, autodiscovery, drops, dms, heartbeats, or scraper.
+        Syntax: !logs watchdog 15
+        Options: watchdog, autodiscovery, drops, dms, heartbeat, scraper
+        """
+        await ctx.defer()
+        from datetime import datetime, timezone
+        log_map = {
+            "watchdog": ("Watchdog Cycles Benchmark Log", WATCHDOG_CYCLES_LOG_PATH),
+            "autodiscovery": ("Auto-Discovery Subject Log", AUTODISCOVERY_LOG_PATH),
+            "drops": ("Live Slot Drops Log", SLOT_DROPS_LOG_PATH),
+            "dms": ("Student DM Dispatches Log", DM_DISPATCH_LOG_PATH),
+            "heartbeat": ("Keep-Alive Heartbeat Log", HEARTBEAT_LOG_PATH),
+            "scraper": ("Scraper Fetches Log", SCRAPER_LOG_PATH),
+        }
+
+        clean_type = log_type.lower().strip()
+        matched = log_map.get(clean_type)
+        if not matched:
+            valid_types = ", ".join([f"`{k}`" for k in log_map.keys()])
+            await ctx.send(f"❌ Invalid log type. Available log files: {valid_types}")
+            return
+
+        title, file_path = matched
+        lines_count = max(1, min(lines_count, 30))
+
+        if not file_path.exists():
+            await ctx.send(f"ℹ️ The log file for **{title}** is currently empty or has not been created yet.")
+            return
+
+        try:
+            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                all_lines = [l.rstrip() for l in f.readlines() if l.strip()]
+
+            recent = all_lines[-lines_count:]
+            content = "\n".join(recent) if recent else "Log file is currently empty."
+            if len(content) > 1900:
+                content = content[-1900:]
+
+            embed = discord.Embed(
+                title=f"📜 {title}",
+                description=f"Showing last **{len(recent)}** lines:\n```text\n{content}\n```",
+                color=0x006837,
+                timestamp=datetime.now(timezone.utc),
+            )
+            await ctx.send(embed=embed)
+        except Exception as e:
+            await ctx.send(f"❌ Error reading log file: `{e}`")
 
 
 async def setup(bot: commands.Bot):

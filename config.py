@@ -29,6 +29,8 @@ HEARTBEAT_LOG_PATH = LOGS_DIR / "session_heartbeats.log"
 API_DEBUG_LOG_PATH = LOGS_DIR / "api_raw_responses.log"
 CATALOG_RAW_DUMP_PATH = LOGS_DIR / "last_catalog_raw.json"
 DUPLICATES_LOG_PATH = LOGS_DIR / "duplicate_alerts.log"
+AUTODISCOVERY_LOG_PATH = LOGS_DIR / "auto_discovery.log"
+WATCHDOG_CYCLES_LOG_PATH = LOGS_DIR / "watchdog_cycles.log"
 
 # Discord Bot Settings
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "").strip()

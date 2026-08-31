@@ -24,6 +24,8 @@ from config import (
     HEARTBEAT_LOG_PATH,
     API_DEBUG_LOG_PATH,
     DUPLICATES_LOG_PATH,
+    AUTODISCOVERY_LOG_PATH,
+    WATCHDOG_CYCLES_LOG_PATH,
 )
 from database import Database
 from dlsu_api import DLSUApiClient
@@ -195,6 +197,7 @@ class WatchdogEngine:
         campus_no = auth.get("campus_no") or 7 if auth else 7
         academic_session = auth.get("academic_session") or 155 if auth else 155
 
+        t0 = time.perf_counter()
         try:
             catalog = await self.api.fetch_course_catalog(campus_no=campus_no, academic_session=academic_session)
             if not catalog:
@@ -223,7 +226,13 @@ class WatchdogEngine:
                 else:
                     college_count += 1
 
-            logger.info(f"Auto-Discovery sync complete: {ge_lc_count} GE/LC courses, {college_count} college courses.")
+            t_dur = time.perf_counter() - t0
+            ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+            _append_log_line(
+                AUTODISCOVERY_LOG_PATH,
+                f"[{ts}] AUTO-DISCOVERY -> Scanned {len(catalog)} catalog courses in {t_dur:.2f}s | {ge_lc_count} GE/LC (24/7 Monitored) | {college_count} College (Indexed)"
+            )
+            logger.info(f"Auto-Discovery sync complete: {ge_lc_count} GE/LC courses, {college_count} college courses ({t_dur:.2f}s).")
             return ge_lc_count, college_count
         except Exception as e:
             logger.debug(f"Auto-discovery check error: {e}")
@@ -359,6 +368,7 @@ class WatchdogEngine:
             if is_ge or is_watched or is_manual:
                 active_poll_courses.append(c)
 
+        t_cycle_start = time.perf_counter()
         monitored = active_poll_courses
 
         self.last_poll_time = datetime.now(timezone.utc)
@@ -487,6 +497,19 @@ class WatchdogEngine:
                 json.dump(cycle_dump, f, indent=2)
         except Exception as ex:
             logger.debug(f"Scraper file log write error: {ex}")
+
+        # Write cycle benchmark metric to WATCHDOG_CYCLES_LOG_PATH
+        try:
+            t_cycle_dur = time.perf_counter() - t_cycle_start
+            ts_cycle = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+            ge_lc_mon = sum(1 for c in monitored if classify_course(c['course_code']).is_ge_lc)
+            watched_mon = len(monitored) - ge_lc_mon
+            _append_log_line(
+                WATCHDOG_CYCLES_LOG_PATH,
+                f"[{ts_cycle}] Cycle #{self.total_poll_cycles:04d} -> Polled {len(monitored)} courses ({ge_lc_mon} GE/LC, {watched_mon} Watched) | Exec Time: {t_cycle_dur:.2f}s | Deltas: {len(cycle_feed_changes)} | Status: OK"
+            )
+        except Exception as ex:
+            logger.debug(f"Watchdog cycle log write error: {ex}")
 
     # ==========================================
     # SMART DELTA & MULTICAST DISPATCHING
