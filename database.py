@@ -622,6 +622,15 @@ class Database:
                 row = await cursor.fetchone()
                 return bool(row[0]) if row else True
 
+    async def get_all_watchlisted_course_codes(self) -> set[str]:
+        """Returns set of all distinct uppercase course codes currently watched by students."""
+        async with aiosqlite.connect(self.db_path) as db:
+            async with db.execute("""
+                SELECT DISTINCT UPPER(course_code) FROM user_watchlist;
+            """) as cursor:
+                rows = await cursor.fetchall()
+                return {r[0] for r in rows if r[0]}
+
     async def get_user_watchlist_detailed(self, user_id: int) -> list[dict]:
         """
         Retrieves user's watchlist with live section states.

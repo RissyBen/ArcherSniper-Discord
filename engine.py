@@ -282,6 +282,20 @@ class WatchdogEngine:
             if code_u not in seen_codes:
                 seen_codes.add(code_u)
                 unique_monitored.append(c)
+
+        # Prioritize courses: All GE/LC courses and active student watchlists are checked first every cycle
+        try:
+            watchlisted_codes = await self.db.get_all_watchlisted_course_codes()
+        except Exception:
+            watchlisted_codes = set()
+
+        def get_course_priority(c):
+            code = c["course_code"].strip().upper()
+            if classify_course(code).is_ge_lc or code in watchlisted_codes:
+                return (0, code)
+            return (1, code)
+
+        unique_monitored.sort(key=get_course_priority)
         monitored = unique_monitored
 
         self.last_poll_time = datetime.now(timezone.utc)
