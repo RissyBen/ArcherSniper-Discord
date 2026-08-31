@@ -127,6 +127,8 @@ def get_admin_overview_embed(is_owner: bool = False) -> discord.Embed:
             f"> `{COMMAND_PREFIX}start` / `{COMMAND_PREFIX}stop` — Turn ON/OFF bot access\n"
             f"> `{COMMAND_PREFIX}sweep [filter]` — Interactive open sections browser\n"
             f"> `{COMMAND_PREFIX}logs [type] [n]` — Real-time logs (`watchdog`, `drops`, `dms`, `autodiscovery`)\n"
+            f"> `{COMMAND_PREFIX}fetchdata [code]` — Inspect parsed JSON data from CourseFinder\n"
+            f"> `{COMMAND_PREFIX}session` / `{COMMAND_PREFIX}cookies` — Inspect active cookies & headers\n"
             f"> `{COMMAND_PREFIX}sync` — Auto-discover & sync DLSU course catalog\n"
             f"> `{COMMAND_PREFIX}startgelc` / `{COMMAND_PREFIX}stopgelc` — Toggle GE/LC feeds\n"
             f"> `{COMMAND_PREFIX}userstatus <@member>` — Inspect member watchlist & mute state\n"
@@ -272,8 +274,14 @@ def get_admin_embed() -> discord.Embed:
     )
 
     embed.add_field(
-        name="📜 !logs [type] [lines]",
-        value="View real-time text logs (`watchdog`, `autodiscovery`, `drops`, `dms`, `heartbeat`).\n`!logs watchdog 15` or `!logs drops 10`",
+        name="📊 !fetchdata [course]",
+        value="Inspect exact parsed JSON sections or full cycle dump from CourseFinder API.\n`!fetchdata STSWENG` or `!fetchdata`",
+        inline=False,
+    )
+
+    embed.add_field(
+        name="🔑 !session / !cookies",
+        value="Inspect stored master session cookies, tokens, and active request headers.\n`!session` or `!cookies`",
         inline=False,
     )
 
