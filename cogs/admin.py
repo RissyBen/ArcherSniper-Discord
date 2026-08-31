@@ -6,6 +6,7 @@ Handles admin commands: !start, !stop, !setcurl, !startgelc, !stopgelc, !add, !r
 import json
 import logging
 from typing import Any
+import aiosqlite
 import discord
 from discord.ext import commands
 
@@ -13,11 +14,13 @@ from config import ADMIN_USER_IDS, ADMIN_ROLE_NAME, SCRAPER_LOG_PATH, CATALOG_RA
 from database import Database
 from engine import WatchdogEngine
 from utils.curl_parser import parse_curl
+from utils.course_classifier import classify_course
 from utils.embeds import (
     create_health_embed,
     create_system_alert_embed,
     create_user_inspection_embed,
     create_admin_course_inspection_embed,
+    create_batched_feed_drop_embed,
     get_courseinfo_page_count,
 )
 
@@ -697,6 +700,116 @@ class AdminCog(commands.Cog, name="Admin"):
             await ctx.send(f"📋 **Latest 15s Scraper Fetches (Log Output):**\n```text\n{chunk}\n```")
         except Exception as e:
             await ctx.send(f"❌ Failed to read scraper log: {e}")
+
+    # ==========================================
+    # !sweep / !rescan (BROADCAST ALL OPEN SLOTS NOW)
+    # ==========================================
+
+    @commands.hybrid_command(
+        name="sweep",
+        aliases=["rescan", "broadcastdrops"],
+        description="(Admin only) Immediately scans and broadcasts all currently open sections to feeds & DMs.",
+    )
+    @is_admin()
+    async def sweep_command(self, ctx: commands.Context):
+        """
+        Scans all courses in database that have open slots (>0) and broadcasts them live across Discord feeds and student DMs.
+        Syntax: !sweep
+        """
+        await ctx.defer()
+        async with aiosqlite.connect(self.db.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute("""
+                SELECT course_id, course_code, section_name, capacity, enlisted, open_slots, teacher, schedule
+                FROM section_states
+                WHERE open_slots > 0
+                ORDER BY course_code, section_name;
+            """) as cursor:
+                open_sections = await cursor.fetchall()
+
+        if not open_sections:
+            await ctx.send("ℹ️ No sections with open slots found in the database. Run `!sync` or wait for the scraper.")
+            return
+
+        cycle_feed_changes: dict[str, list[dict]] = {}
+
+        for sec in open_sections:
+            code = sec["course_code"]
+            sec_name = sec["section_name"]
+            open_s = sec["open_slots"]
+            cap = sec["capacity"]
+            enl = sec["enlisted"]
+            teacher = sec["teacher"] or "TBA"
+            sched = sec["schedule"] or "TBA"
+
+            # 1. Dispatch DM alerts to students watching this course
+            await self.engine._dispatch_personal_dms(
+                course_code=code,
+                course_name="",
+                section_name=sec_name,
+                open_slots=open_s,
+                capacity=cap,
+                enlisted=enl,
+                teacher=teacher,
+                schedule=sched,
+                prev_open_slots=0,
+            )
+
+            # 2. Collect for public feed channels
+            classification = classify_course(code)
+            change_item = {
+                "course_code": code,
+                "course_name": "",
+                "section_name": sec_name,
+                "open_slots": open_s,
+                "capacity": cap,
+                "enlisted": enl,
+                "teacher": teacher,
+                "schedule": sched,
+                "prev_open_slots": 0,
+                "category_label": classification.college_name or "DLSU Feed",
+            }
+            target_channels = set()
+            if classification.is_ge_lc and self.engine.ge_lc_active:
+                target_channels.add("ge_lc")
+            col_key = classification.feed_channel_key
+            if col_key and col_key != "ge_lc":
+                target_channels.add(col_key)
+
+            for ch_k in target_channels:
+                cycle_feed_changes.setdefault(ch_k, []).append(change_item)
+
+        # Broadcast consolidated batch embeds to each feed channel
+        guild_ids = await self.db.get_all_configured_guilds()
+        if cycle_feed_changes:
+            for feed_key, changes in cycle_feed_changes.items():
+                if not changes:
+                    continue
+                label = changes[0].get("category_label", "DLSU Feed")
+                batch_embed = create_batched_feed_drop_embed(label, changes)
+
+                for g_id in guild_ids:
+                    channels = await self.db.get_server_channels(g_id)
+                    ch_id = channels.get(feed_key)
+                    if ch_id:
+                        ch = self.bot.get_channel(ch_id)
+                        if ch:
+                            try:
+                                await ch.send(embed=batch_embed, allowed_mentions=discord.AllowedMentions.none())
+                            except Exception as ex:
+                                logger.debug(f"Could not send sweep batch to {ch_id}: {ex}")
+
+        embed = create_system_alert_embed(
+            title="⚡ Instant Sweep Broadcast Completed!",
+            description=(
+                f"Successfully broadcasted **{len(open_sections)} open sections** across all Discord feeds and student DMs!\n\n"
+                f"> 🎯 **Total Open Sections Found:** `{len(open_sections)}`\n"
+                f"> 🏛️ **Feeds Updated:** `{len(cycle_feed_changes)} channels`\n"
+                f"> 📬 **Personal DMs Sent:** Subscribed students alerted"
+            ),
+            level="success",
+        )
+        await ctx.send(embed=embed)
 
 
 async def setup(bot: commands.Bot):
