@@ -834,7 +834,7 @@ class WatchdogEngine:
             prev_open_slots=prev_open_slots,
         )
 
-        for watcher in watchers:
+        async def _send_to_watcher(watcher: dict):
             user_id = watcher["user_id"]
             username = watcher.get("discord_username") or f"User_{user_id}"
             dm_key = (user_id, course_code.upper(), section_name.upper())
@@ -848,12 +848,18 @@ class WatchdogEngine:
                     DUPLICATES_LOG_PATH,
                     f"[{ts_dm_dup}] SUPPRESSED REPEAT DM: User {user_id} on {course_code} {section_name} ({open_slots} open)"
                 )
-                continue
+                return
 
             self.recent_dm_dispatches[dm_key] = (open_slots, now_ts)
             ts_dm = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
             try:
-                user = await self.bot.fetch_user(user_id)
+                user = None
+                if hasattr(self.bot, "fetch_user"):
+                    res = self.bot.fetch_user(user_id)
+                    user = await res if asyncio.iscoroutine(res) or hasattr(res, "__await__") else res
+                elif hasattr(self.bot, "get_user"):
+                    user = self.bot.get_user(user_id)
+
                 if user:
                     if open_slots == 0:
                         status_text = "🔒 **Section is now FULL / Sniped (0 Open)**"
@@ -892,6 +898,8 @@ class WatchdogEngine:
                     DM_DISPATCH_LOG_PATH,
                     f"[{ts_dm}] DM FAILED: @{username} (ID: {user_id}) -> {course_code} {section_name} [ERROR: {e}]"
                 )
+
+        await asyncio.gather(*[_send_to_watcher(w) for w in watchers], return_exceptions=True)
 
     async def _mirror_dm_to_admin_logs(
         self,
