@@ -48,7 +48,7 @@ COLLEGE_PREFIX_MAP: dict[str, tuple[str, list[str]]] = {
     "RVRCOB": (
         "RVR College of Business",
         [
-            "DSOM", "FIN", "MKT", "MARKET", "ACY", "COB", "MODENMA", "BUS",
+            "DSI", "DSOM", "FIN", "MKT", "MARKET", "ACY", "COB", "MODENMA", "BUS",
             "COBLAW", "TAX", "ENTREP", "MAN", "ORG", "STRAT", "OPE",
             "CORP", "ACC", "BSA", "BSIT", "AUD", "COST", "TREAS", "LAW",
         ],
