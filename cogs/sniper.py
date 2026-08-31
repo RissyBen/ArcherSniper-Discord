@@ -315,24 +315,36 @@ class SniperCog(commands.Cog, name="Sniper"):
         course = await self.db.get_monitored_course(clean_code)
         if not course:
             catalog_match = await self.db.search_catalog(clean_code)
+            if not catalog_match and len(clean_code) >= 4:
+                catalog_match = await self.db.search_catalog(clean_code[:5])
+
             if not catalog_match and self.engine and hasattr(self.engine, "api"):
                 try:
-                    catalog = await self.engine.api.fetch_course_catalog()
+                    auth = await self.db.get_master_auth()
+                    campus_no = auth.get("campus_no") or 7 if auth else 7
+                    academic_session = auth.get("academic_session") or 155 if auth else 155
+                    catalog = await self.engine.api.fetch_course_catalog(campus_no=campus_no, academic_session=academic_session)
                     for item in catalog:
                         await self.db.upsert_catalog_course(item["course_id"], item["course_code"], item.get("course_name", ""))
                     catalog_match = await self.db.search_catalog(clean_code)
+                    if not catalog_match and len(clean_code) >= 4:
+                        catalog_match = await self.db.search_catalog(clean_code[:5])
                 except Exception:
                     pass
 
             if catalog_match:
                 best = catalog_match[0]
                 await self.db.add_monitored_course(
-                    course_id=best["course_id"],
+                    course_id=str(best["course_id"]).strip(),
                     course_code=best["course_code"],
                     course_name=best.get("course_name", ""),
                     added_by=f"AutoWatch by {ctx.author.name}",
                 )
-                course = await self.db.get_monitored_course(clean_code)
+                course = {
+                    "course_id": str(best["course_id"]).strip(),
+                    "course_code": best["course_code"],
+                    "course_name": best.get("course_name", ""),
+                }
             else:
                 # Add with clean code
                 await self.db.add_monitored_course(
@@ -341,7 +353,11 @@ class SniperCog(commands.Cog, name="Sniper"):
                     course_name=clean_code,
                     added_by=f"Watch by {ctx.author.name}",
                 )
-                course = await self.db.get_monitored_course(clean_code)
+                course = {
+                    "course_id": clean_code,
+                    "course_code": clean_code,
+                    "course_name": clean_code,
+                }
 
         cid = course["course_id"]
         code = course["course_code"]
@@ -729,6 +745,9 @@ class SniperCog(commands.Cog, name="Sniper"):
         course = await self.db.get_monitored_course(clean_code)
         if not course or not str(course.get("course_id", "")).isdigit():
             catalog_match = await self.db.search_catalog(clean_code)
+            if not catalog_match and len(clean_code) >= 4:
+                catalog_match = await self.db.search_catalog(clean_code[:5])
+
             if not catalog_match and self.engine and hasattr(self.engine, "api"):
                 try:
                     auth = await self.db.get_master_auth()
@@ -738,6 +757,8 @@ class SniperCog(commands.Cog, name="Sniper"):
                     for item in catalog:
                         await self.db.upsert_catalog_course(item["course_id"], item["course_code"], item.get("course_name", ""))
                     catalog_match = await self.db.search_catalog(clean_code)
+                    if not catalog_match and len(clean_code) >= 4:
+                        catalog_match = await self.db.search_catalog(clean_code[:5])
                 except Exception:
                     pass
 
@@ -755,11 +776,12 @@ class SniperCog(commands.Cog, name="Sniper"):
                     added_by="StudentCourseInfoResolver",
                 )
             else:
-                course = {
-                    "course_id": clean_code,
-                    "course_code": clean_code,
-                    "course_name": clean_code,
-                }
+                await ctx.send(
+                    f"❌ Course **`{clean_code}`** was not found in the DLSU CourseFinder catalog.\n"
+                    f"> 💡 **Tip:** Double check the subject code spelling (e.g. `GEMATMW` for Math in the Modern World).\n"
+                    f"> 🔍 **Search:** Try `!search <keyword>` (e.g. `!search math` or `!courses` for GE/LCs)."
+                )
+                return
 
         cid = course["course_id"]
         code = course["course_code"]
