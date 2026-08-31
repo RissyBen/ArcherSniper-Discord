@@ -42,21 +42,22 @@ COLLEGE_PREFIX_MAP: dict[str, tuple[str, list[str]]] = {
         "College of Computer Studies",
         [
             "CC", "CS", "ST", "IT", "IS", "GD", "WD", "NS", "MOB", "DAT",
-            "NET", "COMP", "THS", "PRC", "ANIM", "CY",
+            "NET", "COMP", "THS", "PRC", "ANIM", "CY", "EMP", "EMPATHY",
+            "EMPATIC", "HCI", "SE", "DATA", "SYS", "WEB", "ALGO", "PROG",
         ],
     ),
     "RVRCOB": (
         "RVR College of Business",
         [
             "DSI", "DSOM", "FIN", "MKT", "MARKET", "ACY", "COB", "MODENMA", "BUS",
-            "COBLAW", "TAX", "ENTREP", "MAN", "ORG", "STRAT", "OPE",
-            "CORP", "ACC", "BSA", "BSIT", "AUD", "COST", "TREAS", "LAW",
+            "COBLAW", "TAX", "ENTREP", "ENT", "MAN", "MGT", "ORG", "STRAT", "OPE",
+            "CORP", "ACC", "BSA", "BSIT", "AUD", "COST", "TREAS", "LAW", "ADV",
         ],
     ),
     "GCOE": (
         "Gokongwei College of Engineering",
         [
-            "ENG", "MEM", "CIV", "ECE", "CHE", "IE", "MEE", "LBY",
+            "ENG", "MEM", "CIV", "ECE", "CHE", "IE", "MEE", "ME", "LBY",
             "CPE", "MTHENG", "ENGSTAT", "ENGPHYS", "ENGCAD", "THERM",
             "DIFF", "NUM", "ENVI", "MATERIA", "CIRC",
         ],
@@ -65,8 +66,8 @@ COLLEGE_PREFIX_MAP: dict[str, tuple[str, list[str]]] = {
         "College of Liberal Arts",
         [
             "AB", "PSY", "HIS", "LIT", "PHIL", "PHL", "POL", "SOC",
-            "COM", "DEV", "HUM", "INT", "MALIK", "FOR", "JAP", "CHN",
-            "SPA", "FRE", "GER", "KOR", "ITL", "RUS", "THEO", "REL",
+            "COM", "COMM", "DEV", "HUM", "INT", "MALIK", "FOR", "JAP", "CHN",
+            "SPA", "FRE", "GER", "KOR", "ITL", "RUS", "THEO", "THE", "REL",
             "FIL", "WRIT",
         ],
     ),
@@ -75,13 +76,13 @@ COLLEGE_PREFIX_MAP: dict[str, tuple[str, list[str]]] = {
         [
             "BIO", "CHEM", "CHM", "PHY", "MTH", "SCIMAT", "ZOO", "BOT",
             "MATH", "ALG", "TRIG", "CALC", "GENB", "GENC", "GENP",
-            "ANAL", "ORCH", "BIOCHEM", "ECOL",
+            "ANAL", "ORCH", "BIOCHEM", "ECOL", "SCI",
         ],
     ),
     "BAGCED": (
         "Br. Andrew Gonzalez College of Education",
         [
-            "CED", "EDM", "EDF", "ECE", "SED", "SPE", "PED", "EDUC",
+            "CED", "EDM", "EDF", "ECE", "SED", "SPE", "PED", "EDUC", "ED",
             "TEA", "CUR", "CHIL", "COUN",
         ],
     ),

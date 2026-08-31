@@ -487,11 +487,17 @@ class WatchdogEngine:
                     ch_id = channels.get(feed_key)
                     if ch_id:
                         ch = self.bot.get_channel(ch_id)
+                        if not ch:
+                            try:
+                                ch = await self.bot.fetch_channel(ch_id)
+                            except Exception:
+                                ch = None
                         if ch:
                             try:
                                 await ch.send(embed=batch_embed, allowed_mentions=discord.AllowedMentions.none())
+                                logger.info(f"📢 Broadcasted batch drop ({len(changes)} section{'s' if len(changes) > 1 else ''}) to #{getattr(ch, 'name', ch_id)} ({feed_key})")
                             except Exception as ex:
-                                logger.debug(f"Could not send batch drop to {ch_id}: {ex}")
+                                logger.warning(f"Could not send batch drop to {ch_id}: {ex}")
 
         # Save cycle log to data/logs/scraper_fetches.log (keep last 500 lines)
         try:
@@ -710,22 +716,34 @@ class WatchdogEngine:
                 ge_lc_ch_id = channels.get("ge_lc")
                 if ge_lc_ch_id:
                     ch = self.bot.get_channel(ge_lc_ch_id)
+                    if not ch:
+                        try:
+                            ch = await self.bot.fetch_channel(ge_lc_ch_id)
+                        except Exception:
+                            ch = None
                     if ch:
                         try:
                             await ch.send(embed=feed_embed, allowed_mentions=discord.AllowedMentions.none())
-                        except Exception:
-                            pass
+                            logger.info(f"📢 Broadcasted single drop to #{getattr(ch, 'name', ge_lc_ch_id)} (ge_lc)")
+                        except Exception as ex:
+                            logger.warning(f"Could not send feed drop to {ge_lc_ch_id}: {ex}")
 
             # Broadcast to respective College Feed
             col_key = classification.feed_channel_key
             if col_key and col_key in channels:
                 col_ch_id = channels[col_key]
                 ch = self.bot.get_channel(col_ch_id)
+                if not ch:
+                    try:
+                        ch = await self.bot.fetch_channel(col_ch_id)
+                    except Exception:
+                        ch = None
                 if ch:
                     try:
                         await ch.send(embed=feed_embed, allowed_mentions=discord.AllowedMentions.none())
-                    except Exception:
-                        pass
+                        logger.info(f"📢 Broadcasted single drop to #{getattr(ch, 'name', col_ch_id)} ({col_key})")
+                    except Exception as ex:
+                        logger.warning(f"Could not send feed drop to {col_ch_id}: {ex}")
 
     async def _dispatch_personal_dms(
         self,
