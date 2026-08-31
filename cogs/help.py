@@ -126,17 +126,16 @@ def get_admin_overview_embed(is_owner: bool = False) -> discord.Embed:
         value=(
             f"> `{COMMAND_PREFIX}setupchannels` — Auto-provision categories & feeds\n"
             f"> `{COMMAND_PREFIX}start` / `{COMMAND_PREFIX}stop` — Turn ON/OFF bot access\n"
+            f"> `{COMMAND_PREFIX}logs [type] [n]` — Real-time logs (`watchdog`, `drops`, `dms`, `autodiscovery`)\n"
+            f"> `{COMMAND_PREFIX}sweep` — Instant scan & broadcast of all open sections\n"
+            f"> `{COMMAND_PREFIX}sync` — Auto-discover & sync DLSU course catalog\n"
+            f"> `{COMMAND_PREFIX}startgelc` / `{COMMAND_PREFIX}stopgelc` — Toggle GE/LC feeds\n"
             f"> `{COMMAND_PREFIX}courseinfo <course>` — Live inspect sections, profs & sched\n"
             f"> `{COMMAND_PREFIX}userstatus <@member>` — Inspect member watchlist & mute state\n"
-            f"> `{COMMAND_PREFIX}scraperlog` — View recent 15s scraper fetch logs\n"
-            f"> `{COMMAND_PREFIX}sync` — Sync full DLSU catalog to feed pool\n"
             f"> `{COMMAND_PREFIX}prune` — End-of-term watchlist cleanup\n"
-            f"> `{COMMAND_PREFIX}cookie <string>` — Link session via direct cookie string\n"
-            f"> `{COMMAND_PREFIX}setcurl <curl>` — Link master browser session via cURL\n"
+            f"> `{COMMAND_PREFIX}setcurl <curl>` / `{COMMAND_PREFIX}cookie <str>` — Link master browser session\n"
             f"> `{COMMAND_PREFIX}bookmarklet` — Get 1-click Chrome refresh bookmark\n"
-            f"> `{COMMAND_PREFIX}removecurl` — Clear stored master session cookies\n"
-            f"> `{COMMAND_PREFIX}startgelc` / `{COMMAND_PREFIX}stopgelc` — Toggle GE/LC feed\n"
-            f"> `{COMMAND_PREFIX}health` — Live diagnostics dashboard"
+            f"> `{COMMAND_PREFIX}health` — Live diagnostics & benchmark dashboard"
         ),
         inline=False,
     )
@@ -275,14 +274,20 @@ def get_admin_embed() -> discord.Embed:
     )
 
     embed.add_field(
-        name="📋 !scraperlog [lines]",
-        value="View recent scraper fetch logs from the 15-second background loop.\n`!scraperlog 25`",
+        name="📜 !logs [type] [lines]",
+        value="View real-time text logs (`watchdog`, `autodiscovery`, `drops`, `dms`, `heartbeat`).\n`!logs watchdog 15` or `!logs drops 10`",
         inline=False,
     )
 
     embed.add_field(
+        name="⚡ !sweep",
+        value="Instantly scan all course sections with open slots and broadcast live drops.\n`!sweep`",
+        inline=True,
+    )
+
+    embed.add_field(
         name="🔄 !sync",
-        value="Synchronize full DLSU CourseFinder catalog into the broadcast monitoring pool.\n`!sync`",
+        value="Auto-discover & sync DLSU CourseFinder catalog into the monitoring database.\n`!sync`",
         inline=True,
     )
 

@@ -830,54 +830,71 @@ class AdminCog(commands.Cog, name="Admin"):
     async def view_logs_command(
         self,
         ctx: commands.Context,
-        log_type: str = "watchdog",
-        lines_count: int = 15,
+        param1: str | None = "watchdog",
+        param2: int | None = 15,
     ):
         """
         Displays recent log file lines for watchdog, autodiscovery, drops, dms, heartbeats, or scraper.
-        Syntax: !logs watchdog 15
-        Options: watchdog, autodiscovery, drops, dms, heartbeat, scraper
+        Syntax: !logs, !logs 20, !logs drops, !logs drops 20
         """
         await ctx.defer()
-        from datetime import datetime, timezone
         log_map = {
-            "watchdog": ("Watchdog Cycles Benchmark Log", WATCHDOG_CYCLES_LOG_PATH),
-            "autodiscovery": ("Auto-Discovery Subject Log", AUTODISCOVERY_LOG_PATH),
-            "drops": ("Live Slot Drops Log", SLOT_DROPS_LOG_PATH),
-            "dms": ("Student DM Dispatches Log", DM_DISPATCH_LOG_PATH),
-            "heartbeat": ("Keep-Alive Heartbeat Log", HEARTBEAT_LOG_PATH),
-            "scraper": ("Scraper Fetches Log", SCRAPER_LOG_PATH),
+            "watchdog": ("⚡ Watchdog Cycles Benchmark Log", WATCHDOG_CYCLES_LOG_PATH),
+            "autodiscovery": ("🔍 Auto-Discovery Subject Log", AUTODISCOVERY_LOG_PATH),
+            "drops": ("🟢 Live Slot Drops Log", SLOT_DROPS_LOG_PATH),
+            "dms": ("📬 Student DM Dispatches Log", DM_DISPATCH_LOG_PATH),
+            "heartbeat": ("💓 Keep-Alive Heartbeat Log", HEARTBEAT_LOG_PATH),
+            "scraper": ("📊 Scraper Fetches Log", SCRAPER_LOG_PATH),
         }
 
-        clean_type = log_type.lower().strip()
-        matched = log_map.get(clean_type)
-        if not matched:
+        # Flexible argument handling (e.g. !logs 20 or !logs drops 20)
+        p1 = (param1 or "watchdog").strip().lower()
+        if p1.isdigit():
+            target_log = "watchdog"
+            lines_count = int(p1)
+        else:
+            target_log = p1
+            lines_count = param2 if param2 else 15
+
+        if target_log not in log_map:
             valid_types = ", ".join([f"`{k}`" for k in log_map.keys()])
-            await ctx.send(f"❌ Invalid log type. Available log files: {valid_types}")
+            await ctx.send(
+                f"❌ Invalid log type `{target_log}`.\n"
+                f"> **Available Log Files:** {valid_types}\n"
+                f"> **Example:** `!logs watchdog 15` or `!logs drops 10`"
+            )
             return
 
-        title, file_path = matched
+        title, file_path = log_map[target_log]
         lines_count = max(1, min(lines_count, 30))
 
-        if not file_path.exists():
-            await ctx.send(f"ℹ️ The log file for **{title}** is currently empty or has not been created yet.")
+        if not file_path.exists() or file_path.stat().st_size == 0:
+            await ctx.send(
+                f"ℹ️ **{title}** is currently initializing.\n"
+                f"> New entries will appear automatically after the next 15-second cycle."
+            )
             return
 
         try:
             with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                 all_lines = [l.rstrip() for l in f.readlines() if l.strip()]
 
+            if not all_lines:
+                await ctx.send(f"ℹ️ **{title}** is currently empty.")
+                return
+
             recent = all_lines[-lines_count:]
-            content = "\n".join(recent) if recent else "Log file is currently empty."
-            if len(content) > 1900:
-                content = content[-1900:]
+            content = "\n".join(recent)
+            if len(content) > 1850:
+                content = content[-1850:]
 
             embed = discord.Embed(
                 title=f"📜 {title}",
-                description=f"Showing last **{len(recent)}** lines:\n```text\n{content}\n```",
+                description=f"Showing last **{len(recent)}** entries:\n```text\n{content}\n```",
                 color=0x006837,
                 timestamp=datetime.now(timezone.utc),
             )
+            embed.set_footer(text="ArcherSniper Cloud • Type !logs <type> <lines> (e.g. !logs drops 10)")
             await ctx.send(embed=embed)
         except Exception as e:
             await ctx.send(f"❌ Error reading log file: `{e}`")
