@@ -4,7 +4,7 @@
  * cookies to ArcherSniper localhost:8080.
  */
 
-const BOT_ENDPOINT = "http://localhost:8080/api/update_cookies";
+const BOT_ENDPOINT = "http://34.126.187.63:8080/api/update_cookies";
 const SYNC_ALARM_NAME = "archersniper_auto_sync";
 const TAB_RELOAD_ALARM_NAME = "archersniper_tab_reload";
 const SYNC_INTERVAL_MINUTES = 2;
