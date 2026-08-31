@@ -574,24 +574,6 @@ class WatchdogEngine:
                 cycle_lines.append(f"  • [{code}] (ID: {cid}) -> FETCH ERROR: {e}")
                 logger.debug(f"Error fetching {code} ({cid}): {e}")
 
-        # Broadcast consolidated 15-second batch updates per feed channel
-        if cycle_feed_changes:
-            target_guild_ids = await self._get_target_guild_ids()
-            for feed_key, changes in cycle_feed_changes.items():
-                if not changes:
-                    continue
-                label = changes[0].get("category_label", "DLSU Feed")
-                batch_embed = create_batched_feed_drop_embed(label, changes)
-
-                for g_id in target_guild_ids:
-                    ch = await self._resolve_feed_channel(g_id, feed_key)
-                    if ch:
-                        try:
-                            await ch.send(embed=batch_embed, allowed_mentions=discord.AllowedMentions.none())
-                            logger.info(f"📢 Broadcasted batch drop ({len(changes)} section{'s' if len(changes) > 1 else ''}) to #{getattr(ch, 'name', ch.id)} ({feed_key})")
-                        except Exception as ex:
-                            logger.warning(f"Could not send batch drop to #{getattr(ch, 'name', ch.id)}: {ex}")
-
         # Save cycle log to data/logs/scraper_fetches.log (keep last 500 lines)
         try:
             timestamp_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
@@ -736,7 +718,7 @@ class WatchdogEngine:
                 prev_open_slots=prev_open,
             )
 
-            # 2. Collect for Batched 15-Second Feed Broadcast (or Direct Broadcast if non-cycle call)
+            # 2. Immediate Broadcast to Public Feed Channels (GE/LC Feed & College Feeds)
             if cycle_feed_changes is not None:
                 classification = classify_course(course_code)
                 change_item = {
@@ -760,18 +742,18 @@ class WatchdogEngine:
 
                 for ch_k in target_channels:
                     cycle_feed_changes.setdefault(ch_k, []).append(change_item)
-            else:
-                await self._broadcast_to_feeds(
-                    course_code=course_code,
-                    course_name=course_name,
-                    section_name=sec_name,
-                    open_slots=new_open,
-                    capacity=cap,
-                    enlisted=enl,
-                    teacher=teacher,
-                    schedule=sched,
-                    prev_open_slots=prev_open,
-                )
+
+            await self._broadcast_to_feeds(
+                course_code=course_code,
+                course_name=course_name,
+                section_name=sec_name,
+                open_slots=new_open,
+                capacity=cap,
+                enlisted=enl,
+                teacher=teacher,
+                schedule=sched,
+                prev_open_slots=prev_open,
+            )
 
     async def _broadcast_to_feeds(
         self,
