@@ -383,7 +383,8 @@ class WatchdogEngine:
             is_manual = (
                 str(c.get("added_by", "")).startswith("Admin")
                 or str(c.get("added_by", "")).startswith("User")
-                or str(c.get("added_by", "")) in ("System", "Auto Seed", "AutoCatalogResolver")
+                or str(c.get("added_by", "")).startswith("Watch by")
+                or str(c.get("added_by", "")).startswith("AutoWatch")
             )
             if is_ge or is_watched or is_manual:
                 active_poll_courses.append(c)
@@ -394,8 +395,8 @@ class WatchdogEngine:
         self.last_poll_time = datetime.now(timezone.utc)
         self.total_poll_cycles += 1
 
-        # Periodic Auto-Discovery of New Subjects from DLSU (every 4 cycles = ~60 seconds)
-        if self.total_poll_cycles % 4 == 0:
+        # Periodic Auto-Discovery of New Subjects from DLSU (on Cycle #1 and every 4 cycles = ~60s)
+        if self.total_poll_cycles == 1 or self.total_poll_cycles % 4 == 0:
             asyncio.create_task(self.auto_discover_new_courses())
 
         cycle_lines = []
