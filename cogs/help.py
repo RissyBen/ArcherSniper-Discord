@@ -68,11 +68,10 @@ def get_student_overview_embed() -> discord.Embed:
             f"> `{COMMAND_PREFIX}watchlist` — View live capacity (e.g. `44/45 [1 Open]`)\n"
             f"> `{COMMAND_PREFIX}courses` — Browse all server-monitored courses\n"
             f"> `{COMMAND_PREFIX}courseinfo <course>` — Inspect sections, profs & schedule\n"
-            f"> `{COMMAND_PREFIX}monitored` — View concise summary list\n"
-            f"> `{COMMAND_PREFIX}search <query>` — In-Discord CourseFinder search\n"
+            f"> `{COMMAND_PREFIX}search <query>` — Search courses across DLSU catalog\n"
             f"> `{COMMAND_PREFIX}stats` — View drop analytics & peak hours\n"
             f"> `{COMMAND_PREFIX}mute` / `{COMMAND_PREFIX}unmute` — Pause or resume DM alerts\n"
-            f"> `{COMMAND_PREFIX}status [code]` — Live enrollment overview"
+            f"> `{COMMAND_PREFIX}status [code]` — Live enrollment overview & bot ping"
         ),
         inline=False,
     )
@@ -126,13 +125,12 @@ def get_admin_overview_embed(is_owner: bool = False) -> discord.Embed:
         value=(
             f"> `{COMMAND_PREFIX}setupchannels` — Auto-provision categories & feeds\n"
             f"> `{COMMAND_PREFIX}start` / `{COMMAND_PREFIX}stop` — Turn ON/OFF bot access\n"
+            f"> `{COMMAND_PREFIX}sweep [filter]` — Interactive open sections browser\n"
             f"> `{COMMAND_PREFIX}logs [type] [n]` — Real-time logs (`watchdog`, `drops`, `dms`, `autodiscovery`)\n"
-            f"> `{COMMAND_PREFIX}sweep` — Instant scan & broadcast of all open sections\n"
             f"> `{COMMAND_PREFIX}sync` — Auto-discover & sync DLSU course catalog\n"
             f"> `{COMMAND_PREFIX}startgelc` / `{COMMAND_PREFIX}stopgelc` — Toggle GE/LC feeds\n"
-            f"> `{COMMAND_PREFIX}courseinfo <course>` — Live inspect sections, profs & sched\n"
             f"> `{COMMAND_PREFIX}userstatus <@member>` — Inspect member watchlist & mute state\n"
-            f"> `{COMMAND_PREFIX}prune` — End-of-term watchlist cleanup\n"
+            f"> `{COMMAND_PREFIX}prune` — End-of-term watchlist cleanup & vacuum\n"
             f"> `{COMMAND_PREFIX}setcurl <curl>` / `{COMMAND_PREFIX}cookie <str>` — Link master browser session\n"
             f"> `{COMMAND_PREFIX}bookmarklet` — Get 1-click Chrome refresh bookmark\n"
             f"> `{COMMAND_PREFIX}health` — Live diagnostics & benchmark dashboard"
@@ -280,20 +278,32 @@ def get_admin_embed() -> discord.Embed:
     )
 
     embed.add_field(
-        name="⚡ !sweep",
-        value="Instantly scan all course sections with open slots and broadcast live drops.\n`!sweep`",
+        name="⚡ !sweep [filter]",
+        value="Interactive 1-message open sections browser with clickable pagination.\n`!sweep` or `!sweep CCS`",
+        inline=True,
+    )
+
+    embed.add_field(
+        name="📜 !logs [type] [lines]",
+        value="View real-time text logs (`watchdog`, `autodiscovery`, `drops`, `dms`, `scraper`).\n`!logs watchdog 15`",
         inline=True,
     )
 
     embed.add_field(
         name="🔄 !sync",
-        value="Auto-discover & sync DLSU CourseFinder catalog into the monitoring database.\n`!sync`",
+        value="Auto-discover & sync DLSU CourseFinder catalog into SQLite.\n`!sync`",
+        inline=True,
+    )
+
+    embed.add_field(
+        name="🔍 !inspectcourse <course>",
+        value="Admin deep-dive into database section states & enrolled counts.\n`!inspectcourse STSWENG`",
         inline=True,
     )
 
     embed.add_field(
         name="🧹 !prune",
-        value="Clears all student watchlist subscriptions at the end of the academic term.\n`!prune`",
+        value="End-of-term watchlist cleanup and SQLite database vacuum.\n`!prune`",
         inline=True,
     )
 
@@ -305,7 +315,7 @@ def get_admin_embed() -> discord.Embed:
 
     embed.add_field(
         name="⚡ !bookmarklet",
-        value="Get the 1-Click Chrome Bookmarklet to refresh sessions with a single click.\n`!bookmarklet`",
+        value="Get 1-Click Chrome Bookmarklet for instant 1-second session refreshes.\n`!bookmarklet`",
         inline=True,
     )
 
@@ -317,13 +327,7 @@ def get_admin_embed() -> discord.Embed:
 
     embed.add_field(
         name="🎯 !startgelc / !stopgelc",
-        value="Toggle live slot drop stream in `#🎯-ge-lc-feed`.\n`!startgelc` / `!stopgelc`",
-        inline=True,
-    )
-
-    embed.add_field(
-        name="⏱️ !interval <time>",
-        value="Adjust scraper frequency (default: 15s).\n`!interval 15s`",
+        value="Toggle universal 24/7 GE/LC background monitoring stream.\n`!startgelc` / `!stopgelc`",
         inline=True,
     )
 
@@ -520,12 +524,17 @@ class HelpCog(commands.Cog, name="Help"):
 
     @commands.hybrid_command(
         name="help",
+        aliases=["adminhelp", "commands", "guide", "sniperhelp"],
         description="Open the ArcherSniper command center and user guides.",
     )
     async def help_command(self, ctx: commands.Context, category: str | None = None):
         """Open the role-aware interactive ArcherSniper command guide."""
         is_admin = user_is_admin(ctx.author, ctx.guild)
         is_owner = user_is_owner(ctx.author, ctx.guild)
+
+        invoked_cmd = ctx.invoked_with.lower() if ctx.invoked_with else ""
+        if invoked_cmd == "adminhelp" and not category:
+            category = "admin"
 
         if category:
             cat = category.strip().lower()
@@ -534,8 +543,10 @@ class HelpCog(commands.Cog, name="Help"):
                 await ctx.send(embed=get_student_embed(), view=view)
             elif is_admin and cat in ("admin", "setup", "config"):
                 await ctx.send(embed=get_admin_embed(), view=AdminHelpButtonView("admin"))
-            elif is_admin and cat in ("curl", "token", "guide"):
+            elif is_admin and cat in ("curl", "token", "guide", "auth"):
                 await ctx.send(embed=get_curl_embed(), view=AdminHelpButtonView("curl"))
+            elif not is_admin and cat in ("admin", "setup", "config", "curl", "token"):
+                await ctx.send("🔒 **Admin guides are only accessible to server administrators.**", ephemeral=True)
             else:
                 embed = get_admin_overview_embed(is_owner=is_owner) if is_admin else get_student_overview_embed()
                 view = AdminHelpButtonView("overview") if is_admin else StudentHelpButtonView("overview")
