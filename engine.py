@@ -261,6 +261,99 @@ class WatchdogEngine:
             logger.debug(f"Auto-discovery check error: {e}")
             return 0, 0
 
+    async def _get_target_guild_ids(self) -> list[int]:
+        """Returns list of distinct integer guild IDs from database and active bot guilds."""
+        ids = set()
+        configured = await self.db.get_all_configured_guilds()
+        for c in configured:
+            try:
+                ids.add(int(c))
+            except Exception:
+                pass
+        if hasattr(self.bot, "guilds") and isinstance(self.bot.guilds, (list, tuple)):
+            for g in self.bot.guilds:
+                gid = getattr(g, "id", None)
+                if isinstance(gid, int):
+                    ids.add(gid)
+        return list(ids)
+
+    async def _resolve_feed_channel(self, guild_id: int, feed_key: str) -> discord.TextChannel | None:
+        """Resolves a channel for a guild ID from DB cache, falling back to name-based discovery in bot.guilds."""
+        if not isinstance(guild_id, int):
+            try:
+                guild_id = int(guild_id)
+            except Exception:
+                return None
+
+        channels = await self.db.get_server_channels(guild_id)
+        aliases = {
+            "dm_logs": ["dm_logs", "admin_dm_logs", "dmlogs"],
+            "admin_dm_logs": ["admin_dm_logs", "dm_logs", "dmlogs"],
+            "admin_disconnects": ["admin_disconnects", "disconnects", "disconnect_alerts"],
+            "admin_heartbeat": ["admin_heartbeat", "heartbeat_log", "heartbeat"],
+            "admin_commands": ["admin_commands", "admin_cmd"],
+            "bot_commands": ["bot_commands", "commands"],
+            "ge_lc": ["ge_lc", "gelc"],
+        }
+        lookup_keys = aliases.get(feed_key, [feed_key])
+        ch_id = None
+        for k in lookup_keys:
+            if k in channels:
+                ch_id = channels[k]
+                break
+
+        if ch_id:
+            ch = self.bot.get_channel(ch_id)
+            if not ch and hasattr(self.bot, "fetch_channel"):
+                try:
+                    ch = await self.bot.fetch_channel(ch_id)
+                except Exception:
+                    ch = None
+            if ch:
+                return ch
+
+        # Auto-discover by name if bot is currently in the guild
+        guild = None
+        if hasattr(self.bot, "get_guild"):
+            try:
+                guild = self.bot.get_guild(guild_id)
+            except Exception:
+                guild = None
+        if not guild and hasattr(self.bot, "guilds") and isinstance(self.bot.guilds, (list, tuple)):
+            for g in self.bot.guilds:
+                if getattr(g, "id", None) == guild_id:
+                    guild = g
+                    break
+
+        if guild:
+            key_patterns = {
+                "ge_lc": ["ge-lc", "ge_lc", "gelc", "ge-feed", "ge_feed"],
+                "ccs": ["ccs-drops", "ccs_drops", "ccs"],
+                "rvrcob": ["rvrcob-drops", "rvrcob_drops", "rvrcob", "cob"],
+                "gcoe": ["gcoe-drops", "gcoe_drops", "gcoe", "engg"],
+                "cla": ["cla-drops", "cla_drops", "cla"],
+                "cos": ["cos-drops", "cos_drops", "cos", "science"],
+                "bagced": ["bagced-drops", "bagced_drops", "bagced", "ced"],
+                "soe": ["soe-drops", "soe_drops", "soe", "econ"],
+                "announcements": ["announcement", "announcements"],
+                "admin_disconnects": ["disconnect", "admin-disconnect"],
+                "admin_heartbeat": ["heartbeat", "heartbeat-log", "admin-heartbeat"],
+                "dm_logs": ["dm-log", "dm_log", "admin-dm", "admin_dm_logs"],
+                "bot_commands": ["bot-command", "bot_command", "commands"],
+                "admin_commands": ["admin-command", "admin_command"],
+            }
+            patterns = key_patterns.get(feed_key, [feed_key])
+            text_channels = getattr(guild, "text_channels", [])
+            if isinstance(text_channels, (list, tuple)):
+                for tc in text_channels:
+                    clean_name = str(getattr(tc, "name", "")).lower().replace(" ", "-")
+                    if any(p in clean_name for p in patterns):
+                        tc_id = getattr(tc, "id", None)
+                        if isinstance(tc_id, int):
+                            await self.db.save_server_channels(guild_id, {feed_key: tc_id})
+                        return tc
+        return None
+
     async def _send_proactive_session_notice(self):
         """Sends an early notice to #🚨-admin-disconnects when cookies are 6+ hours old."""
         embed = create_system_alert_embed(
@@ -272,16 +365,14 @@ class WatchdogEngine:
             ),
             level="info",
         )
-        guild_ids = await self.db.get_all_configured_guilds()
-        for g_id in guild_ids:
-            disc_ch_id = await self.db.get_server_channel(g_id, "admin_disconnects")
-            if disc_ch_id:
-                ch = self.bot.get_channel(disc_ch_id)
-                if ch:
-                    try:
-                        await ch.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
-                    except Exception:
-                        pass
+        target_guild_ids = await self._get_target_guild_ids()
+        for g_id in target_guild_ids:
+            ch = await self._resolve_feed_channel(g_id, "admin_disconnects")
+            if ch:
+                try:
+                    await ch.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+                except Exception:
+                    pass
 
     async def _log_heartbeat_pulse(self, status_code: int, latency_ms: float):
         """Sends compact pulse log to #💓-admin-heartbeat-log channel and writes to data/logs/session_heartbeats.log."""
@@ -293,8 +384,8 @@ class WatchdogEngine:
             f"[{ts}] HEARTBEAT #{self.heartbeat_count:04d} -> Status: {status_code} | Latency: {latency_ms:.1f}ms | Courses: {active_c} | Watchers: {active_w} | Session: {'CONNECTED' if self.is_connected else 'DISCONNECTED'}"
         )
 
-        guild_ids = await self.db.get_all_configured_guilds()
-        if not guild_ids:
+        target_guild_ids = await self._get_target_guild_ids()
+        if not target_guild_ids:
             # Fallback to ALERT_CHANNEL_ID if configured
             if self.alert_channel_id:
                 ch = self.bot.get_channel(self.alert_channel_id)
@@ -311,21 +402,19 @@ class WatchdogEngine:
                         pass
             return
 
-        for g_id in guild_ids:
-            ch_id = await self.db.get_server_channel(g_id, "admin_heartbeat")
-            if ch_id:
-                channel = self.bot.get_channel(ch_id)
-                if channel:
-                    embed = create_heartbeat_pulse_embed(
-                        status_code=status_code,
-                        latency_ms=latency_ms,
-                        active_courses=len({k[0] for k in self.section_slot_cache.keys()}),
-                        active_watchers=await self.db.get_all_active_watchers_count(),
-                    )
-                    try:
-                        await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
-                    except Exception as e:
-                        logger.debug(f"Could not send pulse to {ch_id}: {e}")
+        for g_id in target_guild_ids:
+            channel = await self._resolve_feed_channel(g_id, "admin_heartbeat")
+            if channel:
+                embed = create_heartbeat_pulse_embed(
+                    status_code=status_code,
+                    latency_ms=latency_ms,
+                    active_courses=len({k[0] for k in self.section_slot_cache.keys()}),
+                    active_watchers=await self.db.get_all_active_watchers_count(),
+                )
+                try:
+                    await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+                except Exception as e:
+                    logger.debug(f"Could not send pulse to #{getattr(channel, 'name', channel.id)}: {e}")
 
     # ==========================================
     # 15-SECOND COURSE SCRAPER POLLING LOOP
@@ -487,29 +576,21 @@ class WatchdogEngine:
 
         # Broadcast consolidated 15-second batch updates per feed channel
         if cycle_feed_changes:
-            guild_ids = await self.db.get_all_configured_guilds()
+            target_guild_ids = await self._get_target_guild_ids()
             for feed_key, changes in cycle_feed_changes.items():
                 if not changes:
                     continue
                 label = changes[0].get("category_label", "DLSU Feed")
                 batch_embed = create_batched_feed_drop_embed(label, changes)
 
-                for g_id in guild_ids:
-                    channels = await self.db.get_server_channels(g_id)
-                    ch_id = channels.get(feed_key)
-                    if ch_id:
-                        ch = self.bot.get_channel(ch_id)
-                        if not ch:
-                            try:
-                                ch = await self.bot.fetch_channel(ch_id)
-                            except Exception:
-                                ch = None
-                        if ch:
-                            try:
-                                await ch.send(embed=batch_embed, allowed_mentions=discord.AllowedMentions.none())
-                                logger.info(f"📢 Broadcasted batch drop ({len(changes)} section{'s' if len(changes) > 1 else ''}) to #{getattr(ch, 'name', ch_id)} ({feed_key})")
-                            except Exception as ex:
-                                logger.warning(f"Could not send batch drop to {ch_id}: {ex}")
+                for g_id in target_guild_ids:
+                    ch = await self._resolve_feed_channel(g_id, feed_key)
+                    if ch:
+                        try:
+                            await ch.send(embed=batch_embed, allowed_mentions=discord.AllowedMentions.none())
+                            logger.info(f"📢 Broadcasted batch drop ({len(changes)} section{'s' if len(changes) > 1 else ''}) to #{getattr(ch, 'name', ch.id)} ({feed_key})")
+                        except Exception as ex:
+                            logger.warning(f"Could not send batch drop to #{getattr(ch, 'name', ch.id)}: {ex}")
 
         # Save cycle log to data/logs/scraper_fetches.log (keep last 500 lines)
         try:
@@ -719,43 +800,28 @@ class WatchdogEngine:
             prev_open_slots=prev_open_slots,
         )
 
-        guild_ids = await self.db.get_all_configured_guilds()
-        for g_id in guild_ids:
-            channels = await self.db.get_server_channels(g_id)
-
+        target_guild_ids = await self._get_target_guild_ids()
+        for g_id in target_guild_ids:
             # Broadcast to GE & LC Feed
             if classification.is_ge_lc and self.ge_lc_active:
-                ge_lc_ch_id = channels.get("ge_lc")
-                if ge_lc_ch_id:
-                    ch = self.bot.get_channel(ge_lc_ch_id)
-                    if not ch:
-                        try:
-                            ch = await self.bot.fetch_channel(ge_lc_ch_id)
-                        except Exception:
-                            ch = None
-                    if ch:
-                        try:
-                            await ch.send(embed=feed_embed, allowed_mentions=discord.AllowedMentions.none())
-                            logger.info(f"📢 Broadcasted single drop to #{getattr(ch, 'name', ge_lc_ch_id)} (ge_lc)")
-                        except Exception as ex:
-                            logger.warning(f"Could not send feed drop to {ge_lc_ch_id}: {ex}")
-
-            # Broadcast to respective College Feed
-            col_key = classification.feed_channel_key
-            if col_key and col_key != "ge_lc" and col_key in channels:
-                col_ch_id = channels[col_key]
-                ch = self.bot.get_channel(col_ch_id)
-                if not ch:
-                    try:
-                        ch = await self.bot.fetch_channel(col_ch_id)
-                    except Exception:
-                        ch = None
+                ch = await self._resolve_feed_channel(g_id, "ge_lc")
                 if ch:
                     try:
                         await ch.send(embed=feed_embed, allowed_mentions=discord.AllowedMentions.none())
-                        logger.info(f"📢 Broadcasted single drop to #{getattr(ch, 'name', col_ch_id)} ({col_key})")
+                        logger.info(f"📢 Broadcasted single drop to #{getattr(ch, 'name', ch.id)} (ge_lc)")
                     except Exception as ex:
-                        logger.warning(f"Could not send feed drop to {col_ch_id}: {ex}")
+                        logger.warning(f"Could not send feed drop to #{getattr(ch, 'name', ch.id)}: {ex}")
+
+            # Broadcast to respective College Feed
+            col_key = classification.feed_channel_key
+            if col_key and col_key != "ge_lc":
+                ch_col = await self._resolve_feed_channel(g_id, col_key)
+                if ch_col:
+                    try:
+                        await ch_col.send(embed=feed_embed, allowed_mentions=discord.AllowedMentions.none())
+                        logger.info(f"📢 Broadcasted single drop to #{getattr(ch_col, 'name', ch_col.id)} ({col_key})")
+                    except Exception as ex:
+                        logger.warning(f"Could not send feed drop to #{getattr(ch_col, 'name', ch_col.id)}: {ex}")
 
     async def _dispatch_personal_dms(
         self,
@@ -868,16 +934,14 @@ class WatchdogEngine:
             prev_open_slots=prev_open_slots,
         )
 
-        guild_ids = await self.db.get_all_configured_guilds()
-        for g_id in guild_ids:
-            dm_log_ch_id = await self.db.get_server_channel(g_id, "admin_dm_logs")
-            if dm_log_ch_id:
-                ch = self.bot.get_channel(dm_log_ch_id)
-                if ch:
-                    try:
-                        await ch.send(embed=mirror_embed, allowed_mentions=discord.AllowedMentions.none())
-                    except Exception as e:
-                        logger.debug(f"Could not send DM mirror log to {dm_log_ch_id}: {e}")
+        target_guild_ids = await self._get_target_guild_ids()
+        for g_id in target_guild_ids:
+            ch = await self._resolve_feed_channel(g_id, "dm_logs")
+            if ch:
+                try:
+                    await ch.send(embed=mirror_embed, allowed_mentions=discord.AllowedMentions.none())
+                except Exception as e:
+                    logger.debug(f"Could not send DM mirror log to #{getattr(ch, 'name', ch.id)}: {e}")
 
     # ==========================================
     # BOT ACTIVITY & PRESENCE
@@ -952,57 +1016,51 @@ class WatchdogEngine:
                 self.disconnect_alert_sent = True
                 logger.warning(f"🚨 Bot remained disconnected for {self.disconnect_grace_period_seconds}s. Dispatching admin alerts for: {reason}")
 
-                guild_ids = await self.db.get_all_configured_guilds()
-                for g_id in guild_ids:
-                    channels = await self.db.get_server_channels(g_id)
-
+                target_guild_ids = await self._get_target_guild_ids()
+                for g_id in target_guild_ids:
                     # 1. Private alert to #🚨-admin-disconnects
-                    disc_ch_id = channels.get("admin_disconnects")
-                    if disc_ch_id:
-                        ch = self.bot.get_channel(disc_ch_id)
-                        if ch:
-                            embed = create_system_alert_embed(
-                                title="🚨 Master Session Disconnected (5-Min Inactive)",
-                                description=(
-                                    f"**Reason:** `{reason}`\n\n"
-                                    f"> ⏱️ **Downtime:** Bot was unable to auto-reconnect within **5 minutes**.\n"
-                                    f"> 🔇 **Safe-Mode:** Student drop alerts are paused.\n"
-                                    f"> 🔑 **Fix:** Run `!setcurl <curl>` in <#{channels.get('admin_commands')}> or click your 1-Click Bookmarklet."
-                                ),
-                                level="error",
-                            )
-                            try:
-                                await ch.send(embed=embed)
-                            except Exception:
-                                pass
+                    disc_ch = await self._resolve_feed_channel(g_id, "admin_disconnects")
+                    admin_cmd_ch = await self._resolve_feed_channel(g_id, "admin_commands")
+                    cmd_mention = f"<#{admin_cmd_ch.id}>" if admin_cmd_ch else "`#🔒-admin-commands`"
+                    if disc_ch:
+                        embed = create_system_alert_embed(
+                            title="🚨 Master Session Disconnected (5-Min Inactive)",
+                            description=(
+                                f"**Reason:** `{reason}`\n\n"
+                                f"> ⏱️ **Downtime:** Bot was unable to auto-reconnect within **5 minutes**.\n"
+                                f"> 🔇 **Safe-Mode:** Student drop alerts are paused.\n"
+                                f"> 🔑 **Fix:** Run `!setcurl <curl>` in {cmd_mention} or click your 1-Click Bookmarklet."
+                            ),
+                            level="error",
+                        )
+                        try:
+                            await disc_ch.send(embed=embed)
+                        except Exception:
+                            pass
 
                     # 2. Public announcement to #📢-announcements (@everyone ping)
-                    ann_ch_id = channels.get("announcements")
-                    if ann_ch_id:
-                        ch = self.bot.get_channel(ann_ch_id)
-                        if ch:
-                            embed = create_disconnect_announcement()
-                            try:
-                                await ch.send(content="@everyone", embed=embed)
-                            except Exception:
-                                pass
+                    ann_ch = await self._resolve_feed_channel(g_id, "announcements")
+                    if ann_ch:
+                        embed = create_disconnect_announcement()
+                        try:
+                            await ann_ch.send(content="@everyone", embed=embed)
+                        except Exception:
+                            pass
         except asyncio.CancelledError:
             logger.info("🟢 5-Minute disconnect alert cancelled (bot reconnected autonomously within grace period).")
 
     async def broadcast_bot_status(self, is_online: bool, admin_name: str, reason: str | None = None):
         """Broadcasts Bot ONLINE or OFFLINE announcement with @everyone mention to #📢-announcements."""
-        guild_ids = await self.db.get_all_configured_guilds()
+        target_guild_ids = await self._get_target_guild_ids()
         embed = create_bot_status_announcement(is_online=is_online, admin_name=admin_name, reason=reason)
 
-        for g_id in guild_ids:
-            ann_ch_id = await self.db.get_server_channel(g_id, "announcements")
-            if ann_ch_id:
-                ch = self.bot.get_channel(ann_ch_id)
-                if ch:
-                    try:
-                        await ch.send(content="@everyone", embed=embed)
-                    except Exception as e:
-                        logger.warning(f"Could not post status announcement to {ann_ch_id}: {e}")
+        for g_id in target_guild_ids:
+            ann_ch = await self._resolve_feed_channel(g_id, "announcements")
+            if ann_ch:
+                try:
+                    await ann_ch.send(content="@everyone", embed=embed)
+                except Exception as e:
+                    logger.warning(f"Could not post status announcement to #{getattr(ann_ch, 'name', ann_ch.id)}: {e}")
 
         await self.update_bot_presence()
 
