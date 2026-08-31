@@ -1162,3 +1162,100 @@ def create_sweep_results_embed(
     )
     return embed
 
+
+def create_session_auth_embed(
+    cookies: dict[str, str],
+    headers: dict[str, str] | None,
+    status: str,
+    campus_no: int = 7,
+    academic_session: int = 155,
+    last_synced: str | None = None,
+    latency_ms: float | None = None,
+) -> discord.Embed:
+    """
+    Builds a detailed, secure inspection card for the Master Browser Session and Cookies.
+    Masks long sensitive tokens while showing cookie counts, byte sizes, and key headers.
+    """
+    is_connected = status.upper() == "CONNECTED"
+    color = COLOR_OPEN_GREEN if is_connected else COLOR_ALERT_RED
+    icon = "🟢" if is_connected else "🔴"
+
+    embed = discord.Embed(
+        title=f"🔑 DLSU Master Session & Cookie Inspector",
+        description=(
+            f"> **Connection Status:** {icon} **`{status.upper()}`**\n"
+            f"> **Campus & Session:** `Campus #{campus_no}` • `Session #{academic_session}`\n"
+            f"> **Active Cookies:** **`{len(cookies)}` stored**\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        ),
+        color=color,
+        timestamp=datetime.now(timezone.utc),
+    )
+
+    # 1. Key Auth Tokens Overview
+    def mask_token(val: str) -> str:
+        if not val:
+            return "*[Empty]*"
+        if len(val) <= 12:
+            return f"`{val[:3]}...{val[-3:]}` ({len(val)} chars)"
+        return f"`{val[:6]}...{val[-6:]}` ({len(val)} chars)"
+
+    cookie_lines = []
+    for k, v in cookies.items():
+        masked = mask_token(v)
+        cookie_lines.append(f"• **`{k}`**: {masked}")
+
+    if cookie_lines:
+        cookie_text = "\n".join(cookie_lines)
+        if len(cookie_text) > 1000:
+            cookie_text = cookie_text[:990] + "\n• *(truncated...)*"
+        embed.add_field(
+            name="🍪 Ingested Session Cookies",
+            value=cookie_text,
+            inline=False,
+        )
+    else:
+        embed.add_field(
+            name="🍪 Ingested Session Cookies",
+            value="*No cookies currently stored. Run `!cookie <string>` or `!setcurl <curl>` to link session.*",
+            inline=False,
+        )
+
+    # 2. Key Headers Overview
+    hdr = headers or {}
+    hdr_lines = []
+    for hk in ["User-Agent", "Referer", "Origin", "X-Requested-With", "RequestVerificationToken"]:
+        found_val = next((v for k, v in hdr.items() if k.lower() == hk.lower()), None)
+        if found_val:
+            if hk.lower() == "user-agent":
+                short_ua = found_val.split("(")[0].strip() if "(" in found_val else found_val[:30]
+                hdr_lines.append(f"• **`{hk}`**: `{short_ua}...`")
+            else:
+                hdr_lines.append(f"• **`{hk}`**: `{mask_token(found_val)}`")
+        else:
+            hdr_lines.append(f"• **`{hk}`**: `❌ Default / Not Set`")
+
+    embed.add_field(
+        name="📡 Active Request Headers",
+        value="\n".join(hdr_lines),
+        inline=False,
+    )
+
+    # 3. Live Heartbeat & Timing
+    latency_str = f"`{latency_ms:.0f}ms` (Responsive)" if latency_ms is not None else "`N/A`"
+    last_synced_str = f"<t:{int(datetime.fromisoformat(last_synced).timestamp())}:R>" if last_synced else "Unknown"
+
+    embed.add_field(
+        name="⚡ Health & Keep-Alive",
+        value=(
+            f"• **Latest Heartbeat Latency:** {latency_str}\n"
+            f"• **Last Updated:** {last_synced_str}\n"
+            f"• **Refresh Webhook:** `POST http://localhost:8080/api/update_cookies`"
+        ),
+        inline=False,
+    )
+
+    embed.set_footer(text="ArcherSniper Master Auth Inspector • DLSU CourseFinder", icon_url=DLSU_LOGO_URL)
+    return embed
+
+

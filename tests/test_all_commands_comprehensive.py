@@ -438,6 +438,29 @@ async def test_admin_prune_and_sync_commands(full_bot_env):
 
 
 @pytest.mark.asyncio
+async def test_admin_session_info_command(full_bot_env):
+    """Tests !session / !authstatus command."""
+    cog = full_bot_env["admin_cog"]
+    db = full_bot_env["db"]
+    ctx = create_mock_ctx(is_admin=True)
+
+    # Save mock auth
+    await db.save_master_auth(
+        cookies={"ASP.NET_SessionId": "sample_session_12345", ".ASPXAUTH": "sample_auth_token_999"},
+        headers={"User-Agent": "Mozilla/5.0 Test"},
+        status="CONNECTED",
+    )
+
+    with patch.object(full_bot_env["engine"].api, "send_heartbeat", new_callable=AsyncMock) as mock_hb:
+        mock_hb.return_value = True
+        await cog.session_info_command.callback(cog, ctx)
+        ctx.send.assert_called()
+        embed = ctx.send.call_args[1]["embed"]
+        assert "Master Session & Cookie Inspector" in embed.title
+        assert "ASP.NET_SessionId" in str(embed.fields)
+
+
+@pytest.mark.asyncio
 async def test_channel_manager_setupchannels_and_admin_toggle(full_bot_env):
     """Tests !setupchannels and !admin toggle commands."""
     chan_cog = full_bot_env["chan_cog"]

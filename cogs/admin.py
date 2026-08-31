@@ -5,6 +5,7 @@ Handles admin commands: !start, !stop, !setcurl, !startgelc, !stopgelc, !add, !r
 
 import json
 import logging
+import time
 from datetime import datetime, timezone
 from typing import Any
 import aiosqlite
@@ -28,6 +29,7 @@ from utils.curl_parser import parse_curl
 from utils.course_classifier import classify_course
 from utils.embeds import (
     create_health_embed,
+    create_session_auth_embed,
     create_system_alert_embed,
     create_user_inspection_embed,
     create_admin_course_inspection_embed,
@@ -393,6 +395,52 @@ class AdminCog(commands.Cog, name="Admin"):
             inline=False,
         )
         embed.set_footer(text="ArcherSniper DLSU • Tier 3 1-Click Fast Recovery")
+        await ctx.send(embed=embed)
+
+    # ==========================================
+    # !session / !authstatus / !cookies (INSPECT MASTER AUTH)
+    # ==========================================
+
+    @commands.hybrid_command(
+        name="session",
+        aliases=["authinfo", "viewcookies", "cookies", "cookieinfo", "sessioninfo", "authstatus"],
+        description="(Admin only) Inspect ingested Master Session cookies, tokens, and active headers.",
+    )
+    @is_admin()
+    async def session_info_command(self, ctx: commands.Context):
+        """
+        Inspect current master browser cookies, headers, and connection status.
+        Syntax: !session
+        """
+        await ctx.defer()
+        auth = await self.db.get_master_auth()
+        cookies = self.engine.api.cookies if self.engine and self.engine.api and self.engine.api.cookies else (auth.get("cookies") if auth else {})
+        headers = self.engine.api.custom_headers if self.engine and self.engine.api and self.engine.api.custom_headers else (auth.get("headers") if auth else {})
+        status = auth.get("status", "DISCONNECTED") if auth else ("CONNECTED" if self.engine.is_connected else "DISCONNECTED")
+        campus_no = auth.get("campus_no") or 7 if auth else 7
+        academic_session = auth.get("academic_session") or 155 if auth else 155
+        last_synced = auth.get("last_synced") if auth else None
+
+        # Test live latency if connected
+        latency_ms = None
+        if self.engine and self.engine.is_connected:
+            t0 = time.perf_counter()
+            try:
+                ok = await self.engine.api.send_heartbeat(campus_no=campus_no)
+                if ok:
+                    latency_ms = (time.perf_counter() - t0) * 1000.0
+            except Exception:
+                pass
+
+        embed = create_session_auth_embed(
+            cookies=cookies or {},
+            headers=headers,
+            status=status,
+            campus_no=campus_no,
+            academic_session=academic_session,
+            last_synced=last_synced,
+            latency_ms=latency_ms,
+        )
         await ctx.send(embed=embed)
 
     # ==========================================
