@@ -54,88 +54,6 @@ def is_server_owner():
     return commands.check(predicate)
 
 
-class CourseInfoPaginationView(discord.ui.View):
-    """Interactive pagination button view for course section inspection."""
-    def __init__(
-        self,
-        course_code: str,
-        course_name: str,
-        course_id: str,
-        sections: list[dict],
-        current_page: int = 1,
-        per_page: int = 12,
-        user_id: int | None = None,
-        timeout: float = 300.0,
-    ):
-        super().__init__(timeout=timeout)
-        self.course_code = course_code
-        self.course_name = course_name
-        self.course_id = course_id
-        self.sections = sections
-        self.current_page = current_page
-        self.per_page = per_page
-        self.user_id = user_id
-        self.total_pages = get_courseinfo_page_count(sections, per_page)
-        self._update_buttons()
-
-    def _update_buttons(self):
-        self.clear_items()
-        if self.total_pages <= 1:
-            return
-
-        btn_first = discord.ui.Button(emoji="⏮️", style=discord.ButtonStyle.secondary, disabled=self.current_page <= 1, row=0)
-        btn_first.callback = self._on_first
-
-        btn_prev = discord.ui.Button(label="Prev", emoji="◀️", style=discord.ButtonStyle.primary, disabled=self.current_page <= 1, row=0)
-        btn_prev.callback = self._on_prev
-
-        btn_page = discord.ui.Button(label=f"Page {self.current_page} / {self.total_pages}", style=discord.ButtonStyle.secondary, disabled=True, row=0)
-
-        btn_next = discord.ui.Button(label="Next", emoji="▶️", style=discord.ButtonStyle.primary, disabled=self.current_page >= self.total_pages, row=0)
-        btn_next.callback = self._on_next
-
-        btn_last = discord.ui.Button(emoji="⏭️", style=discord.ButtonStyle.secondary, disabled=self.current_page >= self.total_pages, row=0)
-        btn_last.callback = self._on_last
-
-        self.add_item(btn_first)
-        self.add_item(btn_prev)
-        self.add_item(btn_page)
-        self.add_item(btn_next)
-        self.add_item(btn_last)
-
-    async def _render_page(self, interaction: discord.Interaction):
-        if self.user_id and interaction.user.id != self.user_id:
-            await interaction.response.send_message("❌ This is not your menu.", ephemeral=True)
-            return
-
-        self._update_buttons()
-        embed = create_admin_course_inspection_embed(
-            course_code=self.course_code,
-            course_name=self.course_name,
-            course_id=self.course_id,
-            sections=self.sections,
-            page=self.current_page,
-            per_page=self.per_page,
-        )
-        await interaction.response.edit_message(embed=embed, view=self)
-
-    async def _on_first(self, interaction: discord.Interaction):
-        self.current_page = 1
-        await self._render_page(interaction)
-
-    async def _on_prev(self, interaction: discord.Interaction):
-        self.current_page = max(1, self.current_page - 1)
-        await self._render_page(interaction)
-
-    async def _on_next(self, interaction: discord.Interaction):
-        self.current_page = min(self.total_pages, self.current_page + 1)
-        await self._render_page(interaction)
-
-    async def _on_last(self, interaction: discord.Interaction):
-        self.current_page = self.total_pages
-        await self._render_page(interaction)
-
-
 class AdminCog(commands.Cog, name="Admin"):
     def __init__(self, bot: commands.Bot, db: Database, engine: WatchdogEngine):
         self.bot = bot
@@ -589,15 +507,15 @@ class AdminCog(commands.Cog, name="Admin"):
                 target_user = await self.bot.fetch_user(target_id)
             except Exception:
                 target_user = None
-        elif ctx.guild:
-            # Search by name in guild
-            found = discord.utils.find(
-                lambda m: m.name.lower() == member.lower() or m.display_name.lower() == member.lower(),
-                ctx.guild.members,
-            )
-            if found:
-                target_user = found
-                target_id = found.id
+        elif ctx.guild and hasattr(ctx.guild, "members"):
+            clean_search = member.lstrip("@").strip().lower()
+            for m in ctx.guild.members:
+                m_name = getattr(m, "name", "").lower()
+                m_disp = getattr(m, "display_name", "").lower()
+                if m_name == clean_search or m_disp == clean_search:
+                    target_user = m
+                    target_id = m.id
+                    break
 
         if not target_id:
             await ctx.send("❌ Could not find the specified member. Provide a `@mention` or numerical user ID.")
@@ -697,11 +615,13 @@ class AdminCog(commands.Cog, name="Admin"):
                     target_member = await ctx.guild.fetch_member(int(clean_input))
                 except Exception:
                     pass
-        elif ctx.guild.members:
-            target_member = discord.utils.find(
-                lambda m: (hasattr(m, "name") and m.name.lower() == clean_name) or (hasattr(m, "display_name") and m.display_name.lower() == clean_name),
-                ctx.guild.members,
-            )
+        elif ctx.guild and hasattr(ctx.guild, "members"):
+            for m in ctx.guild.members:
+                m_name = getattr(m, "name", "").lower()
+                m_disp = getattr(m, "display_name", "").lower()
+                if m_name == clean_name or m_disp == clean_name:
+                    target_member = m
+                    break
 
         if not target_member:
             await ctx.send("❌ Could not find the specified member. Please `@mention` the member or provide their user ID.")
@@ -777,109 +697,6 @@ class AdminCog(commands.Cog, name="Admin"):
             await ctx.send(f"📋 **Latest 15s Scraper Fetches (Log Output):**\n```text\n{chunk}\n```")
         except Exception as e:
             await ctx.send(f"❌ Failed to read scraper log: {e}")
-
-    # ==========================================
-    # !courseinfo <COURSE> (LIVE SECTION INSPECTOR)
-    # ==========================================
-
-    @commands.hybrid_command(
-        name="courseinfo",
-        aliases=["sections", "inspectcourse", "sectioninfo"],
-        description="(Admin only) Live search a course to view all sections, slot capacities, schedules, and professors.",
-    )
-    @is_admin()
-    async def course_info_command(self, ctx: commands.Context, course_code: str):
-        """
-        Live search any DLSU course to inspect all sections, capacities, instructors, and time schedules.
-        Syntax: !courseinfo STSWENG or !courseinfo LCFILIB
-        """
-        await ctx.defer()
-        clean_code = course_code.strip().upper()
-
-        # Resolve course in monitored pool or catalog
-        course = await self.db.get_monitored_course(clean_code)
-        if not course or not str(course.get("course_id", "")).isdigit():
-            catalog_match = await self.db.search_catalog(clean_code)
-            if not catalog_match and self.engine and hasattr(self.engine, "api"):
-                try:
-                    auth = await self.db.get_master_auth()
-                    campus_no = auth.get("campus_no") or 7 if auth else 7
-                    academic_session = auth.get("academic_session") or 155 if auth else 155
-                    catalog = await self.engine.api.fetch_course_catalog(campus_no=campus_no, academic_session=academic_session)
-                    for item in catalog:
-                        await self.db.upsert_catalog_course(item["course_id"], item["course_code"], item.get("course_name", ""))
-                    catalog_match = await self.db.search_catalog(clean_code)
-                except Exception:
-                    pass
-
-            if catalog_match and str(catalog_match[0]["course_id"]).isdigit():
-                best = catalog_match[0]
-                course = {
-                    "course_id": str(best["course_id"]).strip(),
-                    "course_code": best["course_code"],
-                    "course_name": best.get("course_name", ""),
-                }
-                # Upgrade monitored pool entry to numeric ID
-                await self.db.add_monitored_course(
-                    course_id=course["course_id"],
-                    course_code=course["course_code"],
-                    course_name=course["course_name"],
-                    added_by="CourseInfoResolver",
-                )
-            else:
-                course = {
-                    "course_id": clean_code,
-                    "course_code": clean_code,
-                    "course_name": clean_code,
-                }
-
-        cid = course["course_id"]
-        code = course["course_code"]
-        name = course.get("course_name", "")
-
-        try:
-            sections = await self.engine.api.fetch_section_data(cid)
-            # Update local section states cache
-            if sections:
-                for sec in sections:
-                    await self.db.upsert_section_state(
-                        course_id=cid,
-                        course_code=code,
-                        section_name=sec.get("section_name", ""),
-                        capacity=sec.get("capacity", 0),
-                        enlisted=sec.get("enlisted", 0),
-                        open_slots=sec.get("open_slots", 0),
-                        teacher=sec.get("teacher", ""),
-                        schedule=sec.get("schedule", ""),
-                    )
-
-            total_pages = get_courseinfo_page_count(sections, per_page=12)
-            embed = create_admin_course_inspection_embed(
-                course_code=code,
-                course_name=name,
-                course_id=cid,
-                sections=sections,
-                page=1,
-                per_page=12,
-            )
-
-            if total_pages > 1:
-                view = CourseInfoPaginationView(
-                    course_code=code,
-                    course_name=name,
-                    course_id=cid,
-                    sections=sections,
-                    current_page=1,
-                    per_page=12,
-                    user_id=ctx.author.id,
-                )
-                await ctx.send(embed=embed, view=view)
-            else:
-                await ctx.send(embed=embed)
-        except PermissionError as pe:
-            await ctx.send(f"⚠️ **Session Disconnected:** `{pe}`\nPlease refresh your cURL using `!setcurl <curl>`.")
-        except Exception as e:
-            await ctx.send(f"❌ Failed to fetch sections for **`{clean_code}`**: `{e}`")
 
 
 async def setup(bot: commands.Bot):
