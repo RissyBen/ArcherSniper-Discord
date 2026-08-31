@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>ArcherSniper Relay</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="header">
+    <div class="logo-title">
+      <span class="logo-icon">🏹</span>
+      <div>
+        <h2>ArcherSniper</h2>
+        <span class="sub-title">Session Auto-Relay Worker</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="content">
+    <div id="status-card" class="status-card connected">
+      <div class="status-badge" id="status-badge">
+        <span class="status-dot"></span>
+        <span id="status-text">Checking Status...</span>
+      </div>
+      <p id="status-detail" class="status-detail">Connecting to ArcherSniper bot on localhost:8080...</p>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-box">
+        <span class="stat-label">Cookies Relayed</span>
+        <span class="stat-val" id="stat-count">--</span>
+      </div>
+      <div class="stat-box">
+        <span class="stat-label">Last Sync</span>
+        <span class="stat-val" id="stat-time">--</span>
+      </div>
+    </div>
+
+    <div class="info-note">
+      <span class="info-icon">🔄</span>
+      <span>Auto-syncs fresh Archer's Hub session tokens every <strong>3 minutes</strong> in the background.</span>
+    </div>
+
+    <button id="sync-btn" class="btn primary-btn">
+      <span class="btn-icon">⚡</span> Sync Now
+    </button>
+
+    <a href="https://archershub.dlsu.edu.ph/CourseFinder/" target="_blank" class="btn secondary-btn">
+      <span class="btn-icon">🏛️</span> Open Archer's Hub
+    </a>
+  </div>
+
+  <div class="footer">
+    <span>ArcherSniper DLSU • Animo La Salle 🏹</span>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

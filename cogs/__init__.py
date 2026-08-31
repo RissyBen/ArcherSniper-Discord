@@ -1,0 +1,3 @@
+"""
+ArcherSniper Cogs Package
+"""

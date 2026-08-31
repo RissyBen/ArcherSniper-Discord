@@ -1,0 +1,43 @@
+# Environment & Secrets (NEVER COMMIT SENSITIVE TOKENS)
+.env
+.env.local
+.env.development
+.env.production
+!.env.example
+
+# Python & Virtual Environments
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# SQLite Database & Session Data
+*.db
+*.db-journal
+*.db-wal
+*.sqlite
+*.sqlite3
+data/*.db
+data/*.sqlite
+
+# Logs & Temporary Scraper Dumps
+data/logs/
+*.log
+data/latest_scraper_dump.json
+data/last_catalog_raw.json
+data/courses_cache.json
+
+# Pytest & IDEs
+.pytest_cache/
+.coverage
+htmlcov/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

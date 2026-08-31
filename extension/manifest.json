@@ -1,0 +1,46 @@
+{
+  "manifest_version": 3,
+  "name": "ArcherSniper — DLSU Session Auto-Relay",
+  "version": "1.0.3",
+  "description": "Automatically relays fresh DLSU CourseFinder session tokens and keeps Archer's Hub active 24/7.",
+  "permissions": [
+    "cookies",
+    "storage",
+    "alarms",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://archershub.dlsu.edu.ph/*",
+    "https://*.dlsu.edu.ph/*",
+    "http://localhost:8080/*",
+    "http://127.0.0.1:8080/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://archershub.dlsu.edu.ph/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "ArcherSniper Session Relay",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
