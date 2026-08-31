@@ -461,6 +461,51 @@ async def test_admin_session_info_command(full_bot_env):
 
 
 @pytest.mark.asyncio
+async def test_admin_fetch_data_command(full_bot_env):
+    """Tests !fetchdata / !rawdata command for single course and cycle dump."""
+    cog = full_bot_env["admin_cog"]
+    ctx = create_mock_ctx(is_admin=True)
+
+    # 1. Single course fetch
+    with patch.object(full_bot_env["engine"].api, "fetch_section_data", new_callable=AsyncMock) as mock_fetch:
+        mock_fetch.return_value = [
+            {"section_name": "Y01", "capacity": 45, "enlisted": 43, "open_slots": 2, "teacher": "Maria Sevilla", "schedule": "FRIDAY 08:00-11:00"}
+        ]
+        await cog.fetch_data_command.callback(cog, ctx, course_code="GEWORLD")
+        ctx.send.assert_called()
+        embed = ctx.send.call_args[1]["embed"]
+        assert "Parsed API Data" in embed.title
+        assert "GEWORLD" in embed.title
+
+    # 2. Full scraper dump view
+    from config import SCRAPER_DUMP_PATH
+    SCRAPER_DUMP_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(SCRAPER_DUMP_PATH, "w", encoding="utf-8") as f:
+        json.dump({
+            "cycle": 42,
+            "timestamp": "2026-08-31T14:00:00Z",
+            "total_courses": 1,
+            "courses": {
+                "GEWORLD": {
+                    "course_id": "4733",
+                    "sections_count": 1,
+                    "sections": [
+                        {"section_name": "Y01", "capacity": 45, "enlisted": 43, "open_slots": 2, "teacher": "Maria Sevilla", "schedule": "FRIDAY 08:00-11:00"}
+                    ]
+                }
+            }
+        }, f, indent=2)
+
+    ctx.send.reset_mock()
+    await cog.fetch_data_command.callback(cog, ctx, course_code=None)
+    ctx.send.assert_called()
+    call_kw = ctx.send.call_args[1]
+    assert "Latest Scraper Fetch Snapshot" in call_kw["embed"].title
+    assert "file" in call_kw
+
+
+
+@pytest.mark.asyncio
 async def test_channel_manager_setupchannels_and_admin_toggle(full_bot_env):
     """Tests !setupchannels and !admin toggle commands."""
     chan_cog = full_bot_env["chan_cog"]

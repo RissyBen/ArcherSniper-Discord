@@ -16,6 +16,7 @@ from config import (
     ADMIN_USER_IDS,
     ADMIN_ROLE_NAME,
     SCRAPER_LOG_PATH,
+    SCRAPER_DUMP_PATH,
     CATALOG_RAW_DUMP_PATH,
     WATCHDOG_CYCLES_LOG_PATH,
     AUTODISCOVERY_LOG_PATH,
@@ -442,6 +443,140 @@ class AdminCog(commands.Cog, name="Admin"):
             latency_ms=latency_ms,
         )
         await ctx.send(embed=embed)
+
+    # ==========================================
+    # !fetchdata / !rawdata (INSPECT PARSED API DATA)
+    # ==========================================
+
+    @commands.hybrid_command(
+        name="fetchdata",
+        aliases=["rawdata", "parseddata", "latestfetch", "latestdata", "dumpdata", "cfdata"],
+        description="(Admin only) View the latest parsed course & section data fetched through session cookies.",
+    )
+    @is_admin()
+    async def fetch_data_command(self, ctx: commands.Context, course_code: str | None = None):
+        """
+        Inspect live or latest cached JSON data fetched from DLSU CourseFinder using master cookies.
+        Syntax: !fetchdata or !fetchdata STSWENG
+        """
+        await ctx.defer()
+
+        # Case 1: Specific Course Requested
+        if course_code and course_code.strip():
+            clean_code = course_code.strip().upper()
+            course = await self.db.get_monitored_course(clean_code)
+            cid = None
+            cname = clean_code
+
+            if course and str(course.get("course_id", "")).isdigit():
+                cid = str(course["course_id"]).strip()
+                cname = course.get("course_name", clean_code)
+            else:
+                matches = await self.db.search_catalog(clean_code)
+                if matches and str(matches[0].get("course_id", "")).isdigit():
+                    cid = str(matches[0]["course_id"]).strip()
+                    cname = matches[0].get("course_name", clean_code)
+
+            if not cid:
+                await ctx.send(f"❌ Course code `{clean_code}` not found in active pool or catalog index. Try running `!sync` first.")
+                return
+
+            if not self.engine or not self.engine.api:
+                await ctx.send("❌ Watchdog API client is not initialized.")
+                return
+
+            try:
+                sections = await self.engine.api.fetch_section_data(cid)
+            except Exception as e:
+                await ctx.send(f"❌ Error fetching CourseFinder data for `{clean_code}` (ID: `{cid}`): `{e}`")
+                return
+
+            output_obj = {
+                "course_code": clean_code,
+                "course_name": cname,
+                "course_id": cid,
+                "fetched_at": datetime.now(timezone.utc).isoformat(),
+                "total_sections": len(sections),
+                "sections": sections,
+            }
+            json_str = json.dumps(output_obj, indent=2, ensure_ascii=False)
+
+            if len(json_str) <= 1850:
+                embed = discord.Embed(
+                    title=f"📊 Parsed API Data — {clean_code} (ID: {cid})",
+                    description=f"Fetched **{len(sections)} section{'s' if len(sections) != 1 else ''}** from DLSU CourseFinder:\n```json\n{json_str}\n```",
+                    color=0x006837,
+                    timestamp=datetime.now(timezone.utc),
+                )
+                embed.set_footer(text="ArcherSniper Raw Data Inspector • DLSU CourseFinder API")
+                await ctx.send(embed=embed)
+            else:
+                import io
+                buf = io.BytesIO(json_str.encode("utf-8"))
+                file = discord.File(buf, filename=f"parsed_{clean_code}_{cid}.json")
+                preview = json_str[:1200] + "\n... [Full JSON attached below]"
+                embed = discord.Embed(
+                    title=f"📊 Parsed API Data — {clean_code} (ID: {cid})",
+                    description=f"Fetched **{len(sections)} section{'s' if len(sections) != 1 else ''}** from DLSU CourseFinder:\n```json\n{preview}\n```",
+                    color=0x006837,
+                    timestamp=datetime.now(timezone.utc),
+                )
+                embed.set_footer(text=f"Total size: {len(json_str)} bytes • Full JSON attached")
+                await ctx.send(embed=embed, file=file)
+            return
+
+        # Case 2: Full Scraper Polling Cycle Dump
+        if not SCRAPER_DUMP_PATH.exists():
+            await ctx.send("ℹ️ No scraper cycle dump recorded yet. Start the bot with `!start` to generate the latest cycle snapshot.")
+            return
+
+        try:
+            with open(SCRAPER_DUMP_PATH, "r", encoding="utf-8", errors="ignore") as f:
+                dump_data = json.load(f)
+
+            cycle_num = dump_data.get("cycle", 0)
+            ts = dump_data.get("timestamp", "Unknown")
+            tot_courses = dump_data.get("total_courses", 0)
+            courses_dict = dump_data.get("courses", {})
+
+            # Count open sections
+            total_open_secs = 0
+            for c_info in courses_dict.values():
+                for sec in c_info.get("sections", []):
+                    if sec.get("open_slots", 0) > 0:
+                        total_open_secs += 1
+
+            # Prepare preview summary of top courses
+            preview_lines = []
+            for idx, (c_code, c_data) in enumerate(list(courses_dict.items())[:6], 1):
+                s_count = c_data.get("sections_count", 0)
+                cid_val = c_data.get("course_id", "")
+                open_cnt = sum(1 for s in c_data.get("sections", []) if s.get("open_slots", 0) > 0)
+                open_badge = f"🟢 {open_cnt} Open" if open_cnt > 0 else "🔴 Full"
+                preview_lines.append(f"• **`{c_code}`** (ID: `{cid_val}`): `{s_count} sections` • {open_badge}")
+
+            preview_text = "\n".join(preview_lines) if preview_lines else "No course details available."
+
+            embed = discord.Embed(
+                title=f"📊 Latest Scraper Fetch Snapshot (Cycle #{cycle_num:04d})",
+                description=(
+                    f"> **Snapshot Timestamp:** `{ts}`\n"
+                    f"> **Total Courses Polled:** `{tot_courses}`\n"
+                    f"> **Sections With Open Slots:** `🟢 {total_open_secs}`\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"**Sample Polled Courses:**\n{preview_text}\n\n"
+                    "*(Full JSON dump attached below for complete inspection)*"
+                ),
+                color=0x006837,
+                timestamp=datetime.now(timezone.utc),
+            )
+            embed.set_footer(text="ArcherSniper Scraper Dump • Run !fetchdata <CODE> for single course")
+
+            with open(SCRAPER_DUMP_PATH, "rb") as f_bin:
+                file = discord.File(f_bin, filename=f"scraper_cycle_{cycle_num:04d}_dump.json")
+                await ctx.send(embed=embed, file=file)
+        except Exception as ex:
+            await ctx.send(f"❌ Failed to read scraper dump: {ex}")
 
     # ==========================================
     # !interval <seconds_or_minutes>
