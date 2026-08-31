@@ -1106,3 +1106,59 @@ def create_course_search_embed(query: str, results: list[dict]) -> discord.Embed
 
     embed.set_footer(text="ArcherSniper DLSU • Use !watch <COURSE> to track")
     return embed
+
+
+def create_sweep_results_embed(
+    open_sections: list[dict],
+    page: int = 1,
+    per_page: int = 10,
+    feeds_updated: int = 0,
+) -> discord.Embed:
+    """
+    Builds the interactive paginated sweep embed for browsing all sections with open seats.
+    """
+    import math
+    total_count = len(open_sections)
+    total_pages = max(1, math.ceil(total_count / per_page))
+    page = max(1, min(page, total_pages))
+
+    start_idx = (page - 1) * per_page
+    end_idx = start_idx + per_page
+    page_items = open_sections[start_idx:end_idx]
+
+    embed = discord.Embed(
+        title="⚡ DLSU Open Sections Sweep (Live Availability)",
+        description=(
+            f"Found **{total_count} section{'s' if total_count != 1 else ''}** with open slots across DLSU CourseFinder!\n"
+            f"> 🏛️ **Feeds Updated:** `{feeds_updated} channels`   •   `Page:` **`{page}/{total_pages}`**\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        ),
+        color=COLOR_DLSU_GREEN,
+        timestamp=datetime.now(timezone.utc),
+    )
+
+    for sec in page_items:
+        code = sec["course_code"]
+        s_name = sec["section_name"]
+        open_s = sec["open_slots"]
+        cap = sec["capacity"]
+        enl = sec["enlisted"]
+        teacher = (sec.get("teacher") or "TBA").strip()
+        sched = (sec.get("schedule") or "TBA").strip()
+        clean_sched = format_clean_schedule(sched)
+        bar = make_progress_bar(enl, cap, length=6)
+
+        field_name = f"🟢 {code} — Section {s_name}"
+        field_val = (
+            f"**{open_s} Open Slot{'s' if open_s != 1 else ''}** • `{enl:>2}/{cap:<2}` {bar}\n"
+            f"👤 `{teacher}`\n"
+            f"🕒 `{clean_sched}`"
+        )
+        embed.add_field(name=field_name, value=field_val, inline=False)
+
+    embed.set_footer(
+        text=f"Page {page}/{total_pages} ({total_count} total open sections) • Use arrows below to browse",
+        icon_url=DLSU_LOGO_URL,
+    )
+    return embed
+

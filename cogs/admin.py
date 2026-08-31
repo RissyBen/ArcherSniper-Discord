@@ -32,6 +32,7 @@ from utils.embeds import (
     create_user_inspection_embed,
     create_admin_course_inspection_embed,
     create_batched_feed_drop_embed,
+    create_sweep_results_embed,
     get_courseinfo_page_count,
 )
 
@@ -786,37 +787,130 @@ class AdminCog(commands.Cog, name="Admin"):
             for ch_k in target_channels:
                 cycle_feed_changes.setdefault(ch_k, []).append(change_item)
 
-        # Broadcast consolidated batch embeds to each feed channel
+        # Broadcast consolidated batch embeds to each feed channel (chunked so all open sections are delivered)
         guild_ids = await self.db.get_all_configured_guilds()
         if cycle_feed_changes:
             for feed_key, changes in cycle_feed_changes.items():
                 if not changes:
                     continue
                 label = changes[0].get("category_label", "DLSU Feed")
-                batch_embed = create_batched_feed_drop_embed(label, changes)
+                # Split changes into chunks of 12 items so every open section is sent without hitting Discord limits
+                for i in range(0, len(changes), 12):
+                    chunk = changes[i:i + 12]
+                    page_no = (i // 12) + 1
+                    tot_p = (len(changes) + 11) // 12
+                    suffix = f" (Part {page_no}/{tot_p})" if tot_p > 1 else ""
+                    batch_embed = create_batched_feed_drop_embed(f"{label}{suffix}", chunk)
 
-                for g_id in guild_ids:
-                    channels = await self.db.get_server_channels(g_id)
-                    ch_id = channels.get(feed_key)
-                    if ch_id:
-                        ch = self.bot.get_channel(ch_id)
-                        if ch:
-                            try:
-                                await ch.send(embed=batch_embed, allowed_mentions=discord.AllowedMentions.none())
-                            except Exception as ex:
-                                logger.debug(f"Could not send sweep batch to {ch_id}: {ex}")
+                    for g_id in guild_ids:
+                        channels = await self.db.get_server_channels(g_id)
+                        ch_id = channels.get(feed_key)
+                        if ch_id:
+                            ch = self.bot.get_channel(ch_id)
+                            if not ch:
+                                try:
+                                    ch = await self.bot.fetch_channel(ch_id)
+                                except Exception:
+                                    ch = None
+                            if ch:
+                                try:
+                                    await ch.send(embed=batch_embed, allowed_mentions=discord.AllowedMentions.none())
+                                    logger.info(f"📢 Broadcasted sweep chunk to #{getattr(ch, 'name', ch_id)} ({feed_key})")
+                                except Exception as ex:
+                                    logger.warning(f"Could not send sweep batch to {ch_id}: {ex}")
 
-        embed = create_system_alert_embed(
-            title="⚡ Instant Sweep Broadcast Completed!",
-            description=(
-                f"Successfully broadcasted **{len(open_sections)} open sections** across all Discord feeds and student DMs!\n\n"
-                f"> 🎯 **Total Open Sections Found:** `{len(open_sections)}`\n"
-                f"> 🏛️ **Feeds Updated:** `{len(cycle_feed_changes)} channels`\n"
-                f"> 📬 **Personal DMs Sent:** Subscribed students alerted"
-            ),
-            level="success",
+        # Render interactive paginated view with Next/Prev buttons for the admin
+        dict_open_sections = [dict(s) for s in open_sections]
+        view = SweepPaginationView(
+            open_sections=dict_open_sections,
+            feeds_updated=len(cycle_feed_changes),
+            user_id=ctx.author.id,
+            current_page=1,
+            per_page=10,
         )
-        await ctx.send(embed=embed)
+        embed = create_sweep_results_embed(
+            open_sections=dict_open_sections,
+            page=1,
+            per_page=10,
+            feeds_updated=len(cycle_feed_changes),
+        )
+        await ctx.send(embed=embed, view=view)
+
+
+class SweepPaginationView(discord.ui.View):
+    """Interactive Next/Previous button pagination view for !sweep command."""
+    def __init__(
+        self,
+        open_sections: list[dict],
+        feeds_updated: int,
+        user_id: int | None = None,
+        current_page: int = 1,
+        per_page: int = 10,
+    ):
+        super().__init__(timeout=300)
+        import math
+        self.open_sections = open_sections
+        self.feeds_updated = feeds_updated
+        self.user_id = user_id
+        self.current_page = current_page
+        self.per_page = per_page
+        self.total_pages = max(1, math.ceil(len(open_sections) / per_page))
+        self._update_buttons()
+
+    def _update_buttons(self):
+        self.clear_items()
+        if self.total_pages <= 1:
+            return
+
+        btn_first = discord.ui.Button(emoji="⏮️", style=discord.ButtonStyle.secondary, disabled=self.current_page <= 1, row=0)
+        btn_first.callback = self._on_first
+
+        btn_prev = discord.ui.Button(label="Prev", emoji="◀️", style=discord.ButtonStyle.primary, disabled=self.current_page <= 1, row=0)
+        btn_prev.callback = self._on_prev
+
+        btn_page = discord.ui.Button(label=f"Page {self.current_page} / {self.total_pages}", style=discord.ButtonStyle.secondary, disabled=True, row=0)
+
+        btn_next = discord.ui.Button(label="Next", emoji="▶️", style=discord.ButtonStyle.primary, disabled=self.current_page >= self.total_pages, row=0)
+        btn_next.callback = self._on_next
+
+        btn_last = discord.ui.Button(emoji="⏭️", style=discord.ButtonStyle.secondary, disabled=self.current_page >= self.total_pages, row=0)
+        btn_last.callback = self._on_last
+
+        self.add_item(btn_first)
+        self.add_item(btn_prev)
+        self.add_item(btn_page)
+        self.add_item(btn_next)
+        self.add_item(btn_last)
+
+    async def _render_page(self, interaction: discord.Interaction):
+        if self.user_id and interaction.user.id != self.user_id:
+            await interaction.response.send_message("❌ This is not your menu.", ephemeral=True)
+            return
+
+        self._update_buttons()
+        embed = create_sweep_results_embed(
+            open_sections=self.open_sections,
+            page=self.current_page,
+            per_page=self.per_page,
+            feeds_updated=self.feeds_updated,
+        )
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    async def _on_first(self, interaction: discord.Interaction):
+        self.current_page = 1
+        await self._render_page(interaction)
+
+    async def _on_prev(self, interaction: discord.Interaction):
+        self.current_page = max(1, self.current_page - 1)
+        await self._render_page(interaction)
+
+    async def _on_next(self, interaction: discord.Interaction):
+        self.current_page = min(self.total_pages, self.current_page + 1)
+        await self._render_page(interaction)
+
+    async def _on_last(self, interaction: discord.Interaction):
+        self.current_page = self.total_pages
+        await self._render_page(interaction)
 
     # ==========================================
     # !logs / !viewlogs (REAL-TIME LOG INSPECTOR)
