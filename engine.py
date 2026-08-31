@@ -283,20 +283,29 @@ class WatchdogEngine:
                 seen_codes.add(code_u)
                 unique_monitored.append(c)
 
-        # Prioritize courses: All GE/LC courses and active student watchlists are checked first every cycle
+        # Filter for the active 15-second watchdog pool:
+        # 1. All universal GE & LC courses (always monitored 24/7)
+        # 2. All student-watchlisted courses (monitored whenever watched)
+        # 3. Explicitly added courses by admin/user/system
         try:
             watchlisted_codes = await self.db.get_all_watchlisted_course_codes()
         except Exception:
             watchlisted_codes = set()
 
-        def get_course_priority(c):
+        active_poll_courses = []
+        for c in unique_monitored:
             code = c["course_code"].strip().upper()
-            if classify_course(code).is_ge_lc or code in watchlisted_codes:
-                return (0, code)
-            return (1, code)
+            is_ge = classify_course(code).is_ge_lc
+            is_watched = code in watchlisted_codes
+            is_manual = (
+                str(c.get("added_by", "")).startswith("Admin")
+                or str(c.get("added_by", "")).startswith("User")
+                or str(c.get("added_by", "")) in ("System", "Auto Seed", "AutoCatalogResolver")
+            )
+            if is_ge or is_watched or is_manual:
+                active_poll_courses.append(c)
 
-        unique_monitored.sort(key=get_course_priority)
-        monitored = unique_monitored
+        monitored = active_poll_courses
 
         self.last_poll_time = datetime.now(timezone.utc)
         self.total_poll_cycles += 1

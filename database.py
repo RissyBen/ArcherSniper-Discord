@@ -186,88 +186,61 @@ class Database:
         logger.info(f"Database initialized successfully at {self.db_path}")
 
     async def seed_default_courses(self) -> int:
-        """Seeds standard DLSU GE, LC, and core college courses into global monitoring pool for live feeds."""
+        """Seeds verified active DLSU GE, LC, and institutional courses into the global monitoring pool for live feeds."""
         default_feed_courses = [
-            # GE Courses
-            ("GEARTAP", "Art Appreciation"),
-            ("GETHICS", "Ethics"),
-            ("GEMATHT", "Mathematics in the Modern World"),
-            ("GEFILI1", "Kontekstwalisadong Komunikasyon sa Filipino"),
-            ("GEFILI2", "Filipino sa Iba't Ibang Disiplina"),
-            ("GERPHIS", "Readings in Philippine History"),
-            ("GERZAL", "The Life and Works of Rizal"),
-            ("GEPCOMM", "Purposive Communication"),
-            ("GESTSOC", "Science, Technology, and Society"),
-            ("GEUSELF", "Understanding the Self"),
-            ("GESPORT", "Physical Fitness and Wellness (Sports)"),
-            ("GEDANCE", "Physical Fitness and Wellness (Dance)"),
-            ("GEFTWEL", "Physical Fitness and Wellness (Fitness)"),
-            ("GREATWY", "The Great Works"),
-            ("NSTP101", "National Service Training Program 1"),
-            ("LASARE1", "Lasallian Recollection 1"),
-            ("LASARE2", "Lasallian Recollection 2"),
-            ("LASARE3", "Lasallian Recollection 3"),
-            # LC Courses
-            ("LCFILIA", "Lasallian Core: Filipino A"),
-            ("LCFILIB", "Lasallian Core: Filipino B"),
-            ("LCLSONE", "Lasallian Studies 1"),
-            ("LCLSTWO", "Lasallian Studies 2"),
-            ("LCLSTRI", "Lasallian Studies 3"),
-            ("LCFAITH", "Faith and Culture"),
-            ("LCTHONE", "Theology 1"),
-            ("LCTHTWO", "Theology 2"),
-            ("LCTHTRI", "Theology 3"),
-            # Popular CCS Courses
-            ("CCPROG1", "Logic Formulation and Introductory Programming"),
-            ("CCPROG2", "Programming with Structured Data Types"),
-            ("CCPROG3", "Object-Oriented Programming"),
-            ("CSARCH1", "Computer Architecture 1"),
-            ("CSARCH2", "Computer Architecture 2"),
-            ("STSWENG", "Software Engineering"),
-            ("CCDSALG", "Data Structures and Algorithms"),
-            ("CCAPDEV", "Applications Development"),
-            ("CCINFO1", "Information Management 1"),
-            ("CSINTSY", "Introduction to Intelligent Systems"),
-            # Popular RVRCOB Courses
-            ("ACYFAR1", "Financial Accounting and Reporting 1"),
-            ("ACYFAR2", "Financial Accounting and Reporting 2"),
-            ("DSOMBAS", "Basic Quantitative Methods for Decision Making"),
-            ("COBLAW1", "Law on Obligations and Contracts"),
-            ("MARKET1", "Principles of Marketing"),
-            ("MODENMA", "Modern Enterprise Management"),
-            # Popular GCOE Courses
-            ("ENGMATH", "Engineering Mathematics"),
-            ("ENGPHYS", "Physics for Engineers"),
-            ("ENGSTAT", "Engineering Statistics"),
-            ("ENGCAD1", "Computer-Aided Drafting"),
-            # Popular CLA Courses
-            ("MALIKHA", "Malikhaing Pagsulat"),
-            ("POLISCI", "Introduction to Political Science"),
-            ("GENPSYC", "General Psychology"),
-            # Popular COS Courses
-            ("GENBIO1", "General Biology 1"),
-            ("GENCHEM", "General Chemistry"),
-            ("GENPHYS", "General Physics"),
-            ("CALCUL1", "Differential Calculus"),
-            ("CALCUL2", "Integral Calculus"),
-            # Popular SOE Courses
-            ("APECO11", "Applied Economics 1"),
-            ("APECO12", "Applied Economics 2"),
-            ("MINECO1", "Microeconomics 1"),
-            ("MARECO1", "Macroeconomics 1"),
+            # GE Core Curriculum
+            ("564", "GEARTAP", "Art Appreciation"),
+            ("1888", "GEETHIC", "Ethics"),
+            ("3475", "GEMATMW", "Mathematics in the Modern World"),
+            ("3857", "GEPCOMM", "Purposive Communication"),
+            ("524", "GERIZAL", "The Life and Works of Rizal"),
+            ("3271", "GERPHIS", "Readings in Philippine History"),
+            ("4025", "GESTSOC", "Science, Technology, and Society"),
+            ("4736", "GEUSELF", "Understanding the Self"),
+            ("4733", "GEWORLD", "The Contemporary World"),
+            ("3210", "GELITPH", "Literatures of the Philippines"),
+            ("3218", "GELITWO", "Literatures of the World"),
+            ("2109", "GEOPLGL", "Geopolitics and International Law"),
+            ("2411", "GELECST", "G.E. Elective Science and Technology"),
+            # Physical Education & Wellness
+            ("3553", "GEFTWEL", "Physical Fitness and Wellness"),
+            ("3884", "GEDANCE", "Physical Fitness and Wellness in Dance"),
+            ("3874", "GESPORT", "Physical Fitness and Wellness in Individual/Dual Sports"),
+            ("3882", "GETEAMS", "Physical Fitness and Wellness in Team Sports"),
+            # Lasallian Core (LC) Curriculum
+            ("4847", "LCASEAN", "The Filipino and ASEAN"),
+            ("1748", "LCENWRD", "Encountering the Word in the World"),
+            ("1924", "LCFAITH", "Faith Worth Living"),
+            ("2630", "LCFILIA", "Introduksyon sa Filipinolohiya at Araling Pilipinas"),
+            ("2831", "LCFILIB", "Komunikasyon ng Pananaliksik"),
+            ("2821", "LCFILIC", "Kultura, Media at Teknolohiya"),
+            ("2944", "LCLSONE", "Lasallian Studies 1"),
+            ("2952", "LCLSTWO", "Lasallian Studies 2"),
+            ("2785", "LCLSTRI", "Lasallian Studies 3"),
+            # Institutional Foundations
+            ("5809", "LASARE1", "Lasallian Recollection 1"),
+            ("5812", "LASARE2", "Lasallian Recollection 2"),
+            ("5814", "LASARE3", "Lasallian Recollection 3"),
+            ("3400", "NSTP101", "National Service Training Program 1"),
+            ("5850", "SAS1000", "Student Affairs Services 1000"),
+            ("5845", "SAS2000", "Student Affairs Services 2000"),
+            ("5837", "SAS3000", "Student Affairs Services 3000"),
         ]
 
         count = 0
         async with aiosqlite.connect(self.db_path) as db:
-            for code, name in default_feed_courses:
+            for cid, code, name in default_feed_courses:
                 await db.execute("""
                     INSERT INTO monitored_courses (course_id, course_code, course_name, is_active, added_by)
                     VALUES (?, ?, ?, 1, 'Auto Seed')
-                    ON CONFLICT(course_id) DO NOTHING;
-                """, (code, code, name))
+                    ON CONFLICT(course_id) DO UPDATE SET
+                        course_code = excluded.course_code,
+                        course_name = excluded.course_name,
+                        is_active = 1;
+                """, (cid, code, name))
                 count += 1
             await db.commit()
-        logger.info(f"Seeded {count} default courses into monitoring pool.")
+        logger.info(f"Seeded {count} default GE/LC courses into monitoring pool.")
         return count
 
     # ==========================================
@@ -822,20 +795,21 @@ class Database:
             await db.commit()
 
     async def search_catalog(self, query: str) -> list[dict]:
-        """Searches course catalog by code or name."""
+        """Searches course catalog by code or name, prioritizing active lower Course IDs."""
         q = f"%{query.strip().upper()}%"
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute("""
                 SELECT * FROM course_catalog
                 WHERE UPPER(course_code) LIKE ? OR UPPER(course_name) LIKE ? OR course_id = ?
+                ORDER BY CAST(course_id AS INTEGER) ASC
                 LIMIT 25;
             """, (q, q, query.strip())) as cursor:
                 rows = await cursor.fetchall()
                 return [dict(row) for row in rows]
 
     async def search_catalog_extended(self, query: str) -> list[dict]:
-        """Performs multi-keyword matching across code and course title."""
+        """Performs multi-keyword matching across code and course title, prioritizing active Course IDs."""
         keywords = [k.strip().upper() for k in query.strip().split() if k.strip()]
         if not keywords:
             return await self.search_catalog(query)
@@ -846,7 +820,7 @@ class Database:
             conditions.append("(UPPER(course_code) LIKE ? OR UPPER(course_name) LIKE ?)")
             params.extend([f"%{kw}%", f"%{kw}%"])
 
-        sql = f"SELECT * FROM course_catalog WHERE {' AND '.join(conditions)} LIMIT 20;"
+        sql = f"SELECT * FROM course_catalog WHERE {' AND '.join(conditions)} ORDER BY CAST(course_id AS INTEGER) ASC LIMIT 20;"
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(sql, tuple(params)) as cursor:
