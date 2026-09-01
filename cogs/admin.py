@@ -30,6 +30,7 @@ from utils.curl_parser import parse_curl
 from utils.course_classifier import classify_course
 from utils.embeds import (
     create_health_embed,
+    create_poll_status_embed,
     create_session_auth_embed,
     create_system_alert_embed,
     create_user_inspection_embed,
@@ -128,6 +129,86 @@ class SweepPaginationView(discord.ui.View):
             page=self.current_page,
             per_page=self.per_page,
             feeds_updated=self.feeds_updated,
+        )
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    async def _on_first(self, interaction: discord.Interaction):
+        self.current_page = 1
+        await self._render_page(interaction)
+
+    async def _on_prev(self, interaction: discord.Interaction):
+        self.current_page = max(1, self.current_page - 1)
+        await self._render_page(interaction)
+
+    async def _on_next(self, interaction: discord.Interaction):
+        self.current_page = min(self.total_pages, self.current_page + 1)
+        await self._render_page(interaction)
+
+    async def _on_last(self, interaction: discord.Interaction):
+        self.current_page = self.total_pages
+        await self._render_page(interaction)
+
+
+class PollPaginationView(discord.ui.View):
+    """Interactive pagination button view for !poll live course telemetry."""
+    def __init__(
+        self,
+        poll_data: dict,
+        courses_list: list[dict],
+        active_watchers: int = 0,
+        current_page: int = 1,
+        per_page: int = 12,
+        user_id: int | None = None,
+        timeout: float = 300.0,
+    ):
+        super().__init__(timeout=timeout)
+        self.poll_data = poll_data
+        self.courses_list = courses_list
+        self.active_watchers = active_watchers
+        self.current_page = current_page
+        self.per_page = per_page
+        self.user_id = user_id
+        import math
+        self.total_pages = max(1, math.ceil(len(courses_list) / per_page)) if courses_list else 1
+        self._update_buttons()
+
+    def _update_buttons(self):
+        self.clear_items()
+        if self.total_pages <= 1:
+            return
+
+        btn_first = discord.ui.Button(emoji="⏮️", style=discord.ButtonStyle.secondary, disabled=self.current_page <= 1, row=0)
+        btn_first.callback = self._on_first
+
+        btn_prev = discord.ui.Button(label="Prev", emoji="◀️", style=discord.ButtonStyle.primary, disabled=self.current_page <= 1, row=0)
+        btn_prev.callback = self._on_prev
+
+        btn_page = discord.ui.Button(label=f"Page {self.current_page} / {self.total_pages}", style=discord.ButtonStyle.secondary, disabled=True, row=0)
+
+        btn_next = discord.ui.Button(label="Next", emoji="▶️", style=discord.ButtonStyle.primary, disabled=self.current_page >= self.total_pages, row=0)
+        btn_next.callback = self._on_next
+
+        btn_last = discord.ui.Button(emoji="⏭️", style=discord.ButtonStyle.secondary, disabled=self.current_page >= self.total_pages, row=0)
+        btn_last.callback = self._on_last
+
+        self.add_item(btn_first)
+        self.add_item(btn_prev)
+        self.add_item(btn_page)
+        self.add_item(btn_next)
+        self.add_item(btn_last)
+
+    async def _render_page(self, interaction: discord.Interaction):
+        if self.user_id and interaction.user.id != self.user_id:
+            await interaction.response.send_message("❌ This is not your menu.", ephemeral=True)
+            return
+
+        self._update_buttons()
+        embed = create_poll_status_embed(
+            poll_data=self.poll_data,
+            courses_list=self.courses_list,
+            active_watchers=self.active_watchers,
+            page=self.current_page,
+            per_page=self.per_page,
         )
         await interaction.response.edit_message(embed=embed, view=self)
 
@@ -689,22 +770,42 @@ class AdminCog(commands.Cog, name="Admin"):
             await ctx.send(f"⚠️ Course **`{clean_code}`** was not found in the monitoring pool.")
 
     # ==========================================
-    # !health & !sync
+    # !poll & !health (LIVE POLLING & ENGINE TELEMETRY)
     # ==========================================
 
     @commands.hybrid_command(
-        name="health",
-        description="Show Master cURL session status and watchdog diagnostics.",
+        name="poll",
+        aliases=["health", "polling", "pollstatus", "diag", "diagnostics"],
+        description="Show live engine telemetry, uptime, gateway latency, and per-course polling timestamps.",
     )
     @is_admin()
-    async def health_command(self, ctx: commands.Context):
-        """Show system health and diagnostics."""
+    async def poll_command(self, ctx: commands.Context):
+        """Show live engine telemetry and real-time per-course polling status."""
         await ctx.defer()
-        health_data = self.engine.get_health_data()
-        health_data["monitored_courses_count"] = len(await self.db.get_monitored_courses(active_only=True))
-        health_data["active_watchers_count"] = await self.db.get_all_active_watchers_count()
-        embed = create_health_embed(health_data)
-        await ctx.send(embed=embed)
+        poll_data = self.engine.get_poll_status_data()
+        courses = await self.db.get_monitored_courses(active_only=True)
+        active_watchers = await self.db.get_all_active_watchers_count()
+
+        embed = create_poll_status_embed(
+            poll_data=poll_data,
+            courses_list=courses,
+            active_watchers=active_watchers,
+            page=1,
+            per_page=12,
+        )
+
+        if len(courses) > 12:
+            view = PollPaginationView(
+                poll_data=poll_data,
+                courses_list=courses,
+                active_watchers=active_watchers,
+                current_page=1,
+                per_page=12,
+                user_id=ctx.author.id,
+            )
+            await ctx.send(embed=embed, view=view)
+        else:
+            await ctx.send(embed=embed)
 
     @commands.hybrid_command(
         name="sync",

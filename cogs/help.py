@@ -409,8 +409,8 @@ def get_admin_server_embed(is_owner: bool = False) -> discord.Embed:
     )
 
     embed.add_field(
-        name="🛡️ !health",
-        value="View live watchdog diagnostics, token status, and keep-alive latency.\n`!health`",
+        name="📊 !poll (or !health)",
+        value="View live engine telemetry, uptime, gateway latency, and per-course polling timestamps.\n`!poll`",
         inline=True,
     )
 

@@ -404,12 +404,12 @@ async def test_admin_user_status_and_health(full_bot_env):
     call_kw = ctx.send.call_args[1]
     assert "GEWORLD" in str(call_kw["embed"].fields)
 
-    # 2. !health
+    # 2. !poll / !health
     ctx.send.reset_mock()
-    await cog.health_command.callback(cog, ctx)
+    await cog.poll_command.callback(cog, ctx)
     ctx.send.assert_called()
     call_kw = ctx.send.call_args[1]
-    assert "Health" in call_kw["embed"].title
+    assert "Live Engine & Course Polling Telemetry" in call_kw["embed"].title
 
 
 @pytest.mark.asyncio

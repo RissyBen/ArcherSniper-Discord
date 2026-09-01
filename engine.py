@@ -96,6 +96,8 @@ class WatchdogEngine:
         self.last_heartbeat_time: datetime | None = None
         self.last_poll_time: datetime | None = None
         self.start_time = datetime.now(timezone.utc)
+        self.course_last_polled: dict[str, float] = {}
+        self.course_last_sections: dict[str, int] = {}
 
         # Background Tasks & Grace Timers
         self.polling_task: asyncio.Task | None = None
@@ -533,6 +535,8 @@ class WatchdogEngine:
 
             try:
                 sections = await self.api.fetch_section_data(cid)
+                self.course_last_polled[code] = time.time()
+                self.course_last_sections[code] = len(sections)
                 sec_items = []
                 for sec in sections:
                     s_name = sec.get("section_name", "")
@@ -1160,20 +1164,47 @@ class WatchdogEngine:
     # HEALTH DIAGNOSTICS
     # ==========================================
 
-    def get_health_data(self) -> dict:
-        """Returns runtime diagnostic metrics."""
-        auth_cookies = self.api.cookies
+    def get_poll_status_data(self) -> dict:
+        """Returns comprehensive real-time engine telemetry and per-course polling status."""
+        now_utc = datetime.now(timezone.utc)
+        uptime_sec = int((now_utc - self.start_time).total_seconds()) if self.start_time else 0
+
+        # Format uptime string
+        if uptime_sec < 60:
+            uptime_str = f"{uptime_sec}s"
+        elif uptime_sec < 3600:
+            uptime_str = f"{uptime_sec // 60}m {uptime_sec % 60}s"
+        elif uptime_sec < 86400:
+            uptime_str = f"{uptime_sec // 3600}h {(uptime_sec % 3600) // 60}m"
+        else:
+            uptime_str = f"{uptime_sec // 86400}d {(uptime_sec % 86400) // 3600}h"
+
+        latency_ms = round(self.bot.latency * 1000, 1) if (self.bot and hasattr(self.bot, "latency")) else 0.0
+
         return {
+            "uptime_str": uptime_str,
+            "uptime_seconds": uptime_sec,
+            "is_connected": self.is_connected and not self.session_expired,
             "bot_active": self.bot_active,
             "ge_lc_active": self.ge_lc_active,
-            "is_connected": self.is_connected,
-            "session_expired": self.session_expired,
             "poll_interval": self.poll_interval,
             "heartbeat_interval": self.heartbeat_interval,
+            "gateway_latency_ms": latency_ms,
+            "heartbeat_count": self.heartbeat_count,
             "last_heartbeat_time": self.last_heartbeat_time,
             "last_poll_time": self.last_poll_time,
             "total_poll_cycles": self.total_poll_cycles,
             "total_alerts_sent": self.total_alerts_sent,
+            "course_polling": self.course_last_polled.copy(),
+            "course_sections": self.course_last_sections.copy(),
+        }
+
+    def get_health_data(self) -> dict:
+        """Returns runtime diagnostic metrics for health checks."""
+        auth_cookies = self.api.cookies
+        poll_data = self.get_poll_status_data()
+        poll_data.update({
+            "session_expired": self.session_expired,
             "consecutive_errors": self.consecutive_errors,
             "monitored_courses_count": len({k[0] for k in self.section_slot_cache.keys()}),
             "active_watchers_count": 0,
@@ -1182,4 +1213,5 @@ class WatchdogEngine:
                 "Secure-SID": "Secure-SID" in auth_cookies or "__Secure-SID" in auth_cookies,
                 "ApplicationGatewayAffinity": "ApplicationGatewayAffinity" in auth_cookies,
             },
-        }
+        })
+        return poll_data

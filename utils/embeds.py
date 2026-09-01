@@ -910,6 +910,89 @@ def create_health_embed(health_data: dict) -> discord.Embed:
     return embed
 
 
+def create_poll_status_embed(
+    poll_data: dict,
+    courses_list: list[dict],
+    active_watchers: int = 0,
+    page: int = 1,
+    per_page: int = 12,
+) -> discord.Embed:
+    """Builds a comprehensive live engine diagnostics & course polling telemetry embed with pagination."""
+    import math
+    import time
+
+    is_conn = poll_data.get("is_connected", False)
+    status_color = COLOR_DLSU_GREEN if is_conn else COLOR_ALERT_RED
+    gateway_lat = poll_data.get("gateway_latency_ms", 0.0)
+    uptime_str = poll_data.get("uptime_str", "0s")
+    poll_int = poll_data.get("poll_interval", 15.0)
+    cycles = poll_data.get("total_poll_cycles", 0)
+
+    total_courses = len(courses_list)
+    total_pages = max(1, math.ceil(total_courses / per_page)) if courses_list else 1
+    cur_page = max(1, min(page, total_pages))
+    start_idx = (cur_page - 1) * per_page
+    end_idx = start_idx + per_page
+    page_courses = courses_list[start_idx:end_idx] if courses_list else []
+
+    embed = discord.Embed(
+        title="📊 ArcherSniper — Live Engine & Course Polling Telemetry",
+        description=(
+            f"> ⏱️ **Uptime:** `{uptime_str}`  •  **Cadence:** `{poll_int:.0f}s interval`  •  **Cycle:** `#{cycles:,}`\n"
+            f"> 🌐 **Discord Gateway:** `🟢 Connected ({gateway_lat:.0f}ms)`\n"
+            f"> 🔑 **Archer's Hub Session:** `{'🟢 Active & Valid' if is_conn else '🔴 Disconnected / Expired'}`\n"
+            f"> 🎯 **Monitored Pool:** `{total_courses} tracked courses`  •  `{active_watchers} students watching`\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        ),
+        color=status_color,
+        timestamp=datetime.now(timezone.utc),
+    )
+
+    if not page_courses:
+        embed.add_field(
+            name="⚠️ No Courses in Active Watchdog Pool",
+            value="No courses are currently being polled. Use `!startgelc` or `!watch <course>` to monitor courses.",
+            inline=False,
+        )
+    else:
+        polling_map = poll_data.get("course_polling", {})
+        sections_map = poll_data.get("course_sections", {})
+        now_ts = time.time()
+
+        lines = []
+        for c in page_courses:
+            code = c.get("course_code", "").strip().upper()
+            name = c.get("course_name", "")
+            last_ts = polling_map.get(code)
+            sec_cnt = sections_map.get(code)
+
+            name_disp = f" ({name[:25]}...)" if len(name) > 28 else (f" ({name})" if name and name != code else "")
+            sec_disp = f"`{sec_cnt} sections` • " if sec_cnt is not None else ""
+
+            if last_ts:
+                diff_sec = max(0, int(now_ts - last_ts))
+                if diff_sec < 60:
+                    ago_str = f"{diff_sec}s ago"
+                else:
+                    ago_str = f"{diff_sec // 60}m {diff_sec % 60}s ago"
+                lines.append(f"🟢 **{code}**{name_disp}\n> {sec_disp}last polled `{ago_str}`")
+            else:
+                lines.append(f"⏳ **{code}**{name_disp}\n> Queued for next polling cycle")
+
+        embed.add_field(
+            name=f"📡 Live Course Polling Cadence ({len(page_courses)} on Page {cur_page}/{total_pages})",
+            value="\n".join(lines),
+            inline=False,
+        )
+
+    if total_pages > 1:
+        embed.set_footer(text=f"Page {cur_page} of {total_pages} • Total Courses: {total_courses} • ArcherSniper DLSU")
+    else:
+        embed.set_footer(text="ArcherSniper DLSU • Real-Time Engine Telemetry")
+
+    return embed
+
+
 def create_system_alert_embed(
     title: str,
     description: str,
