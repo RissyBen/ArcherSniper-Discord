@@ -29,12 +29,14 @@ async def mock_engine(tmp_path):
     engine.bot_active = True
     engine.is_connected = True
     engine.session_expired = False
+    engine.total_poll_cycles = 2
     return engine
 
 
 @pytest.mark.asyncio
 async def test_baseline_establishment(mock_engine):
     """Initial check establishes baseline without firing alert."""
+    mock_engine.total_poll_cycles = 1
     mock_engine._dispatch_personal_dms = AsyncMock()
     mock_engine._broadcast_to_feeds = AsyncMock()
 

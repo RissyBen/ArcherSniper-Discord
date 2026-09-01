@@ -665,10 +665,13 @@ class WatchdogEngine:
             schedule=sched,
         )
 
-        # Establish baseline on first cycle without alerting.
+        # Silence all alerts on Cycle 1 (baseline establishment on startup / restart)
+        if self.total_poll_cycles <= 1:
+            return
+
         # If a brand-new section appears in subsequent cycles with open slots, treat as a new drop from 0.
         if prev_open is None:
-            if self.total_poll_cycles > 1 and new_open > 0:
+            if new_open > 0:
                 prev_open = 0
             else:
                 return
