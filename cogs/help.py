@@ -73,6 +73,8 @@ def get_student_overview_embed() -> discord.Embed:
             f"• `{COMMAND_PREFIX}courseinfo <course>` — Inspect section lists, profs, & schedules\n"
             f"• `{COMMAND_PREFIX}search <query>` — Search courses across the DLSU catalog\n"
             f"• `{COMMAND_PREFIX}stats` — View drop analytics & peak enlistment windows\n"
+            f"• `{COMMAND_PREFIX}status` — View watchdog status & live open section counts\n"
+            f"• `{COMMAND_PREFIX}ping` — View bot WebSocket latency\n"
             f"• `{COMMAND_PREFIX}mute` / `{COMMAND_PREFIX}unmute` — Pause or resume DM alerts"
         ),
         inline=False,
@@ -255,6 +257,18 @@ def get_admin_engine_embed() -> discord.Embed:
         name="🔄 !sync",
         value="Auto-discover & sync all 2,600+ DLSU courses into SQLite (locks real active IDs).\n`!sync`",
         inline=True,
+    )
+
+    embed.add_field(
+        name="🧪 !simulate <course> <sec> <open> [prev]",
+        value="Simulate synthetic slot deltas to test instant DM alerts, feed cards, & logs.\n`!simulate GEMATMW A54D 2 1`",
+        inline=False,
+    )
+
+    embed.add_field(
+        name="➕ !add <course>  &  ➖ !remove <course>",
+        value="Manually add or remove a specific course from 24/7 background monitoring.\n`!add CSARCH1` / `!remove CSARCH1`",
+        inline=False,
     )
 
     embed.set_footer(text="ArcherSniper Engine Suite • DLSU CourseFinder")
