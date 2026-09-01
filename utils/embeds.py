@@ -916,7 +916,8 @@ def create_poll_status_embed(
     courses_list: list[dict],
     active_watchers: int = 0,
     page: int = 1,
-    per_page: int = 8,
+    per_page: int = 10,
+    watchlisted_codes: set[str] | None = None,
 ) -> discord.Embed:
     """Builds a comprehensive live engine diagnostics & course polling telemetry embed with pagination."""
     import math
@@ -959,26 +960,26 @@ def create_poll_status_embed(
         polling_map = poll_data.get("course_polling", {})
         sections_map = poll_data.get("course_sections", {})
         now_ts = time.time()
+        watch_set = watchlisted_codes or set()
 
         lines = []
         for c in page_courses:
             code = c.get("course_code", "").strip().upper()
-            name = c.get("course_name", "")
             last_ts = polling_map.get(code)
             sec_cnt = sections_map.get(code)
 
-            is_ge = classify_course(code).is_ge_lc
-            tag = "🎯 GE/LC" if is_ge else "🔔 Watched"
+            is_watched = code in watch_set
+            tag = "🔔 Watched" if is_watched else "🎯 GE/LC"
+            tag_box = f"`[{tag}]`" if is_watched else "`[🎯 GE/LC]  `"
 
-            name_disp = f" ({name[:20]}...)" if len(name) > 23 else (f" ({name})" if name and name != code else "")
-            sec_disp = f"`{sec_cnt} secs` • " if sec_cnt is not None else ""
+            sec_str = f"`{sec_cnt:>2}` secs" if sec_cnt is not None else "`--` secs"
 
             if last_ts:
                 diff_sec = max(0, int(now_ts - last_ts))
                 ago_str = f"{diff_sec}s ago" if diff_sec < 60 else f"{diff_sec // 60}m {diff_sec % 60}s ago"
-                lines.append(f"🟢 **`{code}`** `[{tag}]`{name_disp} — {sec_disp}polled `{ago_str}`")
+                lines.append(f"🟢 `{code:<8}` {tag_box} — {sec_str} • polled `{ago_str}`")
             else:
-                lines.append(f"🟢 **`{code}`** `[{tag}]`{name_disp} — {sec_disp}active in 15s loop")
+                lines.append(f"🟢 `{code:<8}` {tag_box} — {sec_str} • active in 15s loop")
 
         field_content = "\n".join(lines)
         if len(field_content) > 1020:

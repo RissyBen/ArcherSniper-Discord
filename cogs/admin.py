@@ -157,7 +157,8 @@ class PollPaginationView(discord.ui.View):
         courses_list: list[dict],
         active_watchers: int = 0,
         current_page: int = 1,
-        per_page: int = 8,
+        per_page: int = 10,
+        watchlisted_codes: set[str] | None = None,
         user_id: int | None = None,
         timeout: float = 300.0,
     ):
@@ -167,6 +168,7 @@ class PollPaginationView(discord.ui.View):
         self.active_watchers = active_watchers
         self.current_page = current_page
         self.per_page = per_page
+        self.watchlisted_codes = watchlisted_codes or set()
         self.user_id = user_id
         import math
         self.total_pages = max(1, math.ceil(len(courses_list) / per_page)) if courses_list else 1
@@ -209,6 +211,7 @@ class PollPaginationView(discord.ui.View):
             active_watchers=self.active_watchers,
             page=self.current_page,
             per_page=self.per_page,
+            watchlisted_codes=self.watchlisted_codes,
         )
         await interaction.response.edit_message(embed=embed, view=self)
 
@@ -784,6 +787,10 @@ class AdminCog(commands.Cog, name="Admin"):
         await ctx.defer()
         poll_data = self.engine.get_poll_status_data()
         courses = await self.engine.get_active_poll_courses()
+        try:
+            watchlisted_codes = {c.strip().upper() for c in await self.db.get_all_watchlisted_course_codes()}
+        except Exception:
+            watchlisted_codes = set()
         active_watchers = await self.db.get_all_active_watchers_count()
 
         embed = create_poll_status_embed(
@@ -791,16 +798,18 @@ class AdminCog(commands.Cog, name="Admin"):
             courses_list=courses,
             active_watchers=active_watchers,
             page=1,
-            per_page=8,
+            per_page=10,
+            watchlisted_codes=watchlisted_codes,
         )
 
-        if len(courses) > 8:
+        if len(courses) > 10:
             view = PollPaginationView(
                 poll_data=poll_data,
                 courses_list=courses,
                 active_watchers=active_watchers,
                 current_page=1,
-                per_page=8,
+                per_page=10,
+                watchlisted_codes=watchlisted_codes,
                 user_id=ctx.author.id,
             )
             await ctx.send(embed=embed, view=view)

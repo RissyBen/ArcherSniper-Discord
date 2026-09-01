@@ -1243,11 +1243,15 @@ class WatchdogEngine:
             if (self.ge_lc_active and is_ge) or is_watched or is_manual:
                 active_courses.append(c)
 
-        # Sort: Watched courses first (🔔), then GE/LC courses alphabetically (🎯)
-        active_courses.sort(
-            key=lambda x: (
-                0 if x["course_code"].strip().upper() in watchlisted_codes else 1,
-                x["course_code"].strip().upper(),
-            )
-        )
+        # Strict 2-Tier Sorting: Watched college courses first (🔔), then GE/LC courses (🎯)
+        def sort_key(c):
+            cd = c["course_code"].strip().upper()
+            if cd in watchlisted_codes:
+                return (0, cd)
+            elif classify_course(cd).is_ge_lc:
+                return (1, cd)
+            else:
+                return (2, cd)
+
+        active_courses.sort(key=sort_key)
         return active_courses
