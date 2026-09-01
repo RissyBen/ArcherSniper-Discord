@@ -499,6 +499,15 @@ class WatchdogEngine:
         if self.total_poll_cycles == 1 or self.total_poll_cycles % 120 == 0:
             asyncio.create_task(self.auto_discover_new_courses())
 
+        # Log cycle header to course_refetch_cadence.log
+        watched_count = sum(1 for c in monitored if c["course_code"].strip().upper() in watchlisted_codes)
+        ge_count = len(monitored) - watched_count
+        ts_hdr = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        _append_log_line(
+            COURSE_CADENCE_LOG_PATH,
+            f"\n--- [Cycle #{self.total_poll_cycles:04d} | {ts_hdr}] Pool: {len(monitored)} active subjects ({watched_count} Watched, {ge_count} GE/LC) ---"
+        )
+
         cycle_lines = []
         cycle_dump = {
             "cycle": self.total_poll_cycles,
@@ -541,6 +550,8 @@ class WatchdogEngine:
                 else:
                     async with lock:
                         cycle_lines.append(f"  • [{code}] -> PENDING: Run !sync to fetch numeric Course ID from DLSU")
+                    ts_pnd = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+                    _append_log_line(COURSE_CADENCE_LOG_PATH, f"[{ts_pnd}] [{code:<8}] ⚠️ PENDING: Run !sync to fetch numeric ID")
                     return
 
             async with sem:
@@ -592,6 +603,8 @@ class WatchdogEngine:
                 except PermissionError as pe:
                     async with lock:
                         cycle_lines.append(f"  • [{code}] (ID: {cid}) -> AUTH ERROR: {pe}")
+                    ts_err = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+                    _append_log_line(COURSE_CADENCE_LOG_PATH, f"[{ts_err}] [{code:<8}] ⚠️ AUTH ERROR: {pe}")
                     logger.warning(f"Permission / session error on {code} ({cid}): {pe}")
                     # Verify if master session is truly expired or if this was just a transient single-course glitch
                     try:
@@ -604,6 +617,8 @@ class WatchdogEngine:
                 except Exception as e:
                     async with lock:
                         cycle_lines.append(f"  • [{code}] (ID: {cid}) -> FETCH ERROR: {e}")
+                    ts_err = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+                    _append_log_line(COURSE_CADENCE_LOG_PATH, f"[{ts_err}] [{code:<8}] ⚠️ FETCH ERROR: {e}")
                     logger.debug(f"Error fetching {code} ({cid}): {e}")
 
         # Fetch all active courses concurrently with Semaphore pool
