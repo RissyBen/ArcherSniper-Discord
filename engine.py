@@ -504,7 +504,10 @@ class WatchdogEngine:
         }
         cycle_feed_changes: dict[str, list[dict]] = {}
 
-        for course in monitored:
+        sem = asyncio.Semaphore(8)
+        lock = asyncio.Lock()
+
+        async def _fetch_course(course: dict):
             cid = str(course["course_id"]).strip()
             code = course["course_code"]
             name = course.get("course_name", "")
@@ -532,58 +535,62 @@ class WatchdogEngine:
                         added_by="AutoCatalogResolver",
                     )
                 else:
-                    cycle_lines.append(f"  • [{code}] -> PENDING: Run !sync to fetch numeric Course ID from DLSU")
-                    continue
+                    async with lock:
+                        cycle_lines.append(f"  • [{code}] -> PENDING: Run !sync to fetch numeric Course ID from DLSU")
+                    return
 
-            try:
-                t_fetch_start = time.perf_counter()
-                sections = await self.api.fetch_section_data(cid)
-                fetch_dur_ms = (time.perf_counter() - t_fetch_start) * 1000.0
-                code_clean = code.strip().upper()
-                self.course_last_polled[code_clean] = time.time()
-                self.course_last_sections[code_clean] = len(sections)
-                self.course_last_status[code_clean] = "200 OK"
-                self.course_last_latency[code_clean] = fetch_dur_ms
-                sec_items = []
-                for sec in sections:
-                    s_name = sec.get("section_name", "")
-                    enl = sec.get("enlisted", 0)
-                    cap = sec.get("capacity", 0)
-                    open_s = sec.get("open_slots", 0)
-                    sec_items.append(f"{s_name}:{enl}/{cap}")
-
-                    await self._process_section_delta(
-                        course_id=cid,
-                        course_code=code,
-                        course_name=name,
-                        section_data=sec,
-                        cycle_feed_changes=cycle_feed_changes,
-                    )
-
-                sec_str = ", ".join(sec_items) if sec_items else "0 sections"
-                cycle_lines.append(f"  • [{code}] (ID: {cid}) -> {len(sections)} sections ({sec_str})")
-                cycle_dump["courses"][code] = {
-                    "course_id": cid,
-                    "sections_count": len(sections),
-                    "sections": sections,
-                }
-            except PermissionError as pe:
-                cycle_lines.append(f"  • [{code}] (ID: {cid}) -> AUTH ERROR: {pe}")
-                logger.warning(f"Permission / session error on {code} ({cid}): {pe}")
-                # Verify if master session is truly expired or if this was just a transient single-course glitch
+            async with sem:
                 try:
-                    is_master_alive = await self.api.send_heartbeat()
-                except Exception:
-                    is_master_alive = False
+                    t_fetch_start = time.perf_counter()
+                    sections = await self.api.fetch_section_data(cid)
+                    fetch_dur_ms = (time.perf_counter() - t_fetch_start) * 1000.0
+                    code_clean = code.strip().upper()
+                    self.course_last_polled[code_clean] = time.time()
+                    self.course_last_sections[code_clean] = len(sections)
+                    self.course_last_status[code_clean] = "200 OK"
+                    self.course_last_latency[code_clean] = fetch_dur_ms
+                    sec_items = []
+                    for sec in sections:
+                        s_name = sec.get("section_name", "")
+                        enl = sec.get("enlisted", 0)
+                        cap = sec.get("capacity", 0)
+                        sec_items.append(f"{s_name}:{enl}/{cap}")
 
-                if not is_master_alive:
-                    await self._handle_disconnect(str(pe))
-                    break
-                else:
-                    logger.info(f"Transient anomaly on {code} ({cid}), but Master Session is verified ACTIVE. Continuing poll cycle.")
-            except Exception as e:
-                cycle_lines.append(f"  • [{code}] (ID: {cid}) -> FETCH ERROR: {e}")
-                logger.debug(f"Error fetching {code} ({cid}): {e}")
+                        await self._process_section_delta(
+                            course_id=cid,
+                            course_code=code,
+                            course_name=name,
+                            section_data=sec,
+                            cycle_feed_changes=cycle_feed_changes,
+                        )
+
+                    sec_str = ", ".join(sec_items) if sec_items else "0 sections"
+                    async with lock:
+                        cycle_lines.append(f"  • [{code}] (ID: {cid}) -> {len(sections)} sections ({sec_str})")
+                        cycle_dump["courses"][code] = {
+                            "course_id": cid,
+                            "sections_count": len(sections),
+                            "sections": sections,
+                        }
+                except PermissionError as pe:
+                    async with lock:
+                        cycle_lines.append(f"  • [{code}] (ID: {cid}) -> AUTH ERROR: {pe}")
+                    logger.warning(f"Permission / session error on {code} ({cid}): {pe}")
+                    # Verify if master session is truly expired or if this was just a transient single-course glitch
+                    try:
+                        is_master_alive = await self.api.send_heartbeat()
+                    except Exception:
+                        is_master_alive = False
+
+                    if not is_master_alive:
+                        await self._handle_disconnect(str(pe))
+                except Exception as e:
+                    async with lock:
+                        cycle_lines.append(f"  • [{code}] (ID: {cid}) -> FETCH ERROR: {e}")
+                    logger.debug(f"Error fetching {code} ({cid}): {e}")
+
+        # Fetch all active courses concurrently with Semaphore pool
+        await asyncio.gather(*[_fetch_course(c) for c in monitored], return_exceptions=True)
 
         # Save cycle log to data/logs/scraper_fetches.log (keep last 500 lines)
         try:
