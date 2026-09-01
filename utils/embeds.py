@@ -971,23 +971,24 @@ def create_poll_status_embed(
             lat_ms = latency_map.get(code)
 
             is_watched = code in watch_set
-            tag = "🔔 Watched" if is_watched else "🎯 GE/LC"
-            tag_box = f"`[{tag}]`" if is_watched else "`[🎯 GE/LC]  `"
+            tag_pad = "[🔔 Watched]" if is_watched else "[🎯 GE/LC]  "
+            code_pad = f"{code:<8}"
 
-            # Clear Section Count (e.g. "1 Section" or "6 Sections")
+            # Fixed-width Section Count column (11 chars)
             if sec_cnt is not None:
-                sec_word = "Section" if sec_cnt == 1 else "Sections"
-                sec_label = f"**{sec_cnt} {sec_word}**"
+                sec_word = "Section " if sec_cnt == 1 else "Sections"
+                sec_pad = f"{sec_cnt:>2} {sec_word}"
             else:
-                sec_label = "**-- Sections**"
+                sec_pad = "-- Sections"
 
             if last_ts:
                 diff_sec = max(0, int(now_ts - last_ts))
-                ago_str = f"{diff_sec}s ago" if diff_sec < 60 else f"{diff_sec // 60}m {diff_sec % 60}s ago"
-                lat_str = f" ({lat_ms:.0f}ms)" if lat_ms is not None else ""
-                lines.append(f"🟢 `{code:<8}` {tag_box} ➔ {sec_label} • Last Fetched: `{ago_str}`{lat_str}")
+                ago_raw = f"{diff_sec}s ago" if diff_sec < 60 else f"{diff_sec // 60}m {diff_sec % 60}s ago"
+                ago_pad = f"{ago_raw:>7}"
+                lat_pad = f"({lat_ms:>3.0f}ms)" if lat_ms is not None else "      "
+                lines.append(f"🟢 `{code_pad} {tag_pad} ➔ {sec_pad} • Fetched: {ago_pad} {lat_pad}`")
             else:
-                lines.append(f"🟢 `{code:<8}` {tag_box} ➔ {sec_label} • Last Fetched: `Queued (15s cadence)`")
+                lines.append(f"🟢 `{code_pad} {tag_pad} ➔ {sec_pad} • Fetched: In-flight (15s)`")
 
         field_content = "\n".join(lines)
         if len(field_content) > 1020:
