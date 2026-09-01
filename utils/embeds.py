@@ -16,6 +16,7 @@ from config import (
     MLS_URL,
     DLSU_BASE_URL,
 )
+from utils.course_classifier import classify_course
 
 
 def make_progress_bar(enlisted: int, capacity: int, length: int = 10) -> str:
@@ -941,7 +942,7 @@ def create_poll_status_embed(
             f"> ⏱️ **Uptime:** `{uptime_str}`  •  **Cadence:** `{poll_int:.0f}s interval`  •  **Cycle:** `#{cycles:,}`\n"
             f"> 🌐 **Discord Gateway:** `🟢 Connected ({gateway_lat:.0f}ms)`\n"
             f"> 🔑 **Archer's Hub Session:** `{'🟢 Active & Valid' if is_conn else '🔴 Disconnected / Expired'}`\n"
-            f"> 🎯 **Monitored Pool:** `{total_courses} tracked courses`  •  `{active_watchers} students watching`\n"
+            f"> 🎯 **Active 15s Watchdog Pool:** `{total_courses} live subjects`  •  `{active_watchers} students watching`\n"
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         ),
         color=status_color,
@@ -966,6 +967,9 @@ def create_poll_status_embed(
             last_ts = polling_map.get(code)
             sec_cnt = sections_map.get(code)
 
+            is_ge = classify_course(code).is_ge_lc
+            tag = "🎯 GE/LC" if is_ge else "🔔 Watched"
+
             name_disp = f" ({name[:25]}...)" if len(name) > 28 else (f" ({name})" if name and name != code else "")
             sec_disp = f"`{sec_cnt} sections` • " if sec_cnt is not None else ""
 
@@ -975,12 +979,12 @@ def create_poll_status_embed(
                     ago_str = f"{diff_sec}s ago"
                 else:
                     ago_str = f"{diff_sec // 60}m {diff_sec % 60}s ago"
-                lines.append(f"🟢 **{code}**{name_disp}\n> {sec_disp}last polled `{ago_str}`")
+                lines.append(f"🟢 **`{code}`** `[{tag}]`{name_disp}\n> {sec_disp}last polled `{ago_str}`")
             else:
-                lines.append(f"⏳ **{code}**{name_disp}\n> Queued for next polling cycle")
+                lines.append(f"🟢 **`{code}`** `[{tag}]`{name_disp}\n> {sec_disp}active in 15s loop")
 
         embed.add_field(
-            name=f"📡 Live Course Polling Cadence ({len(page_courses)} on Page {cur_page}/{total_pages})",
+            name=f"📡 Live Monitored Subjects ({len(page_courses)} on Page {cur_page}/{total_pages})",
             value="\n".join(lines),
             inline=False,
         )

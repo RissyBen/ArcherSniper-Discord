@@ -783,7 +783,7 @@ class AdminCog(commands.Cog, name="Admin"):
         """Show live engine telemetry and real-time per-course polling status."""
         await ctx.defer()
         poll_data = self.engine.get_poll_status_data()
-        courses = await self.db.get_monitored_courses(active_only=True)
+        courses = await self.engine.get_active_poll_courses()
         active_watchers = await self.db.get_all_active_watchers_count()
 
         embed = create_poll_status_embed(

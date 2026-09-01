@@ -1215,3 +1215,39 @@ class WatchdogEngine:
             },
         })
         return poll_data
+
+    async def get_active_poll_courses(self) -> list[dict]:
+        """Returns the exact list of courses actively included in the 15-second polling loop (GE/LC + watched majors)."""
+        all_monitored = await self.db.get_monitored_courses(active_only=True)
+        try:
+            watchlisted_codes = set(await self.db.get_all_watchlisted_course_codes())
+        except Exception:
+            watchlisted_codes = set()
+
+        unique_map = {}
+        for c in all_monitored:
+            code = c["course_code"].strip().upper()
+            if code not in unique_map:
+                unique_map[code] = c
+
+        active_courses = []
+        for code, c in unique_map.items():
+            is_ge = classify_course(code).is_ge_lc
+            is_watched = code in watchlisted_codes
+            is_manual = (
+                str(c.get("added_by", "")).startswith("Admin")
+                or str(c.get("added_by", "")).startswith("User")
+                or str(c.get("added_by", "")).startswith("Watch by")
+                or str(c.get("added_by", "")).startswith("AutoWatch")
+            )
+            if (self.ge_lc_active and is_ge) or is_watched or is_manual:
+                active_courses.append(c)
+
+        # Sort: Watched courses first (🔔), then GE/LC courses alphabetically (🎯)
+        active_courses.sort(
+            key=lambda x: (
+                0 if x["course_code"].strip().upper() in watchlisted_codes else 1,
+                x["course_code"].strip().upper(),
+            )
+        )
+        return active_courses
