@@ -23,6 +23,7 @@ from config import (
     SLOT_DROPS_LOG_PATH,
     DM_DISPATCH_LOG_PATH,
     HEARTBEAT_LOG_PATH,
+    COURSE_CADENCE_LOG_PATH,
 )
 from database import Database
 from engine import WatchdogEngine
@@ -1151,6 +1152,8 @@ class AdminCog(commands.Cog, name="Admin"):
         await ctx.defer()
         log_map = {
             "watchdog": ("⚡ Watchdog Cycles Benchmark Log", WATCHDOG_CYCLES_LOG_PATH),
+            "cadence": ("⏱️ Course Refetch Cadence & Interval Gap Log", COURSE_CADENCE_LOG_PATH),
+            "gap": ("⏱️ Course Refetch Cadence & Interval Gap Log", COURSE_CADENCE_LOG_PATH),
             "autodiscovery": ("🔍 Auto-Discovery Subject Log", AUTODISCOVERY_LOG_PATH),
             "drops": ("🟢 Live Slot Drops Log", SLOT_DROPS_LOG_PATH),
             "dms": ("📬 Student DM Dispatches Log", DM_DISPATCH_LOG_PATH),

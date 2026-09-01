@@ -26,6 +26,7 @@ from config import (
     DUPLICATES_LOG_PATH,
     AUTODISCOVERY_LOG_PATH,
     WATCHDOG_CYCLES_LOG_PATH,
+    COURSE_CADENCE_LOG_PATH,
 )
 from database import Database
 from dlsu_api import DLSUApiClient
@@ -548,10 +549,23 @@ class WatchdogEngine:
                     sections = await self.api.fetch_section_data(cid)
                     fetch_dur_ms = (time.perf_counter() - t_fetch_start) * 1000.0
                     code_clean = code.strip().upper()
-                    self.course_last_polled[code_clean] = time.time()
+                    now_ts = time.time()
+                    prev_ts = self.course_last_polled.get(code_clean)
+                    self.course_last_polled[code_clean] = now_ts
                     self.course_last_sections[code_clean] = len(sections)
                     self.course_last_status[code_clean] = "200 OK"
                     self.course_last_latency[code_clean] = fetch_dur_ms
+
+                    # Log exact refetch gap to data/logs/course_refetch_cadence.log
+                    tot_open = sum(s.get("open_slots", 0) for s in sections)
+                    ts_log = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+                    if prev_ts is not None:
+                        gap_sec = now_ts - prev_ts
+                        cadence_msg = f"[{ts_log}] [{code_clean:<8}] Refetched in {fetch_dur_ms:>5.1f}ms | Gap since last fetch: {gap_sec:>5.1f}s | Sections: {len(sections):>2} ({tot_open} open)"
+                    else:
+                        cadence_msg = f"[{ts_log}] [{code_clean:<8}] Initial baseline in {fetch_dur_ms:>5.1f}ms | Gap since last fetch: FIRST POLL | Sections: {len(sections):>2} ({tot_open} open)"
+                    _append_log_line(COURSE_CADENCE_LOG_PATH, cadence_msg)
+
                     sec_items = []
                     for sec in sections:
                         s_name = sec.get("section_name", "")

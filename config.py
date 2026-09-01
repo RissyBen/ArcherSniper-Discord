@@ -31,6 +31,7 @@ CATALOG_RAW_DUMP_PATH = LOGS_DIR / "last_catalog_raw.json"
 DUPLICATES_LOG_PATH = LOGS_DIR / "duplicate_alerts.log"
 AUTODISCOVERY_LOG_PATH = LOGS_DIR / "auto_discovery.log"
 WATCHDOG_CYCLES_LOG_PATH = LOGS_DIR / "watchdog_cycles.log"
+COURSE_CADENCE_LOG_PATH = LOGS_DIR / "course_refetch_cadence.log"
 
 # Ensure all log files exist on disk for tail commands
 for _p in (
@@ -41,6 +42,7 @@ for _p in (
     HEARTBEAT_LOG_PATH,
     AUTODISCOVERY_LOG_PATH,
     WATCHDOG_CYCLES_LOG_PATH,
+    COURSE_CADENCE_LOG_PATH,
 ):
     _p.touch(exist_ok=True)
 
