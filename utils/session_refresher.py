@@ -115,7 +115,6 @@ class PlaywrightSessionRefresher:
                         "name": str(k).strip(),
                         "value": str(v).strip(),
                         "url": "https://archershub.dlsu.edu.ph",
-                        "path": "/",
                     })
 
                 if playwright_cookies:
