@@ -525,18 +525,9 @@ class WatchdogEngine:
             code = course["course_code"]
             name = course.get("course_name", "")
 
-            # If course_id is not numeric, resolve numeric Course Creation ID from catalog
+            # If course_id is not numeric, resolve numeric Course Creation ID from local SQLite catalog
             if not cid.isdigit():
                 catalog_match = await self.db.search_catalog(code)
-                if not catalog_match and self.is_connected:
-                    try:
-                        catalog = await self.api.fetch_course_catalog()
-                        for item in catalog:
-                            await self.db.upsert_catalog_course(item["course_id"], item["course_code"], item.get("course_name", ""))
-                        catalog_match = await self.db.search_catalog(code)
-                    except Exception:
-                        pass
-
                 if catalog_match and str(catalog_match[0]["course_id"]).isdigit():
                     cid = str(catalog_match[0]["course_id"]).strip()
                     name = catalog_match[0].get("course_name", name)
@@ -549,9 +540,9 @@ class WatchdogEngine:
                     )
                 else:
                     async with lock:
-                        cycle_lines.append(f"  • [{code}] -> PENDING: Run !sync to fetch numeric Course ID from DLSU")
+                        cycle_lines.append(f"  • [{code}] -> NOT OFFERED: Course ID not active in current term")
                     ts_pnd = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-                    _append_log_line(COURSE_CADENCE_LOG_PATH, f"[{ts_pnd}] [{code:<8}] ⚠️ PENDING: Run !sync to fetch numeric ID")
+                    _append_log_line(COURSE_CADENCE_LOG_PATH, f"[{ts_pnd}] [{code:<8}] ⚠️ NOT OFFERED / NO ACTIVE SECTIONS THIS TERM")
                     return
 
             async with sem:
