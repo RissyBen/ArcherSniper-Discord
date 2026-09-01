@@ -115,11 +115,11 @@ def get_admin_overview_embed(is_owner: bool = False) -> discord.Embed:
         name="📂 Available Administrative Modules",
         value=(
             "Use the **Interactive Dropdown Menu** below to view detailed syntax and examples:\n\n"
-            "• ⚙️ **Engine & Watchdog Suite** — `!start`, `!stop`, `!sweep`, `!startgelc`, `!interval`, `!sync`\n"
+            "• ⚙️ **Engine & Watchdog Suite** — `!start`, `!stop`, `!sweep`, `!startgelc`, `!interval`, `!sync`, `!simulate`\n"
             "• 📊 **Logs & Data Inspection** — `!fetchdata`, `!logs`, `!scraperlog`, `!userstatus`, `!inspectcourse`\n"
             "• 🔑 **Session Auth & Tokens** — `!session`, `!cookies`, `!setcurl`, `!bookmarklet`, `!removecurl`\n"
-            "• 🏛️ **Server Provisioning & Roles** — `!setupchannels`, `!prune`, `!health`, `!admin`\n"
-            "• 🎯 **Student Commands Guide** — All 8 public student commands"
+            "• 🏛️ **Server Provisioning & Roles** — `!setupchannels`, `!prune`, `!poll`, `!admin`\n"
+            "• 🎯 **Student Commands Guide** — All 11 public student commands"
         ),
         inline=False,
     )
@@ -409,8 +409,8 @@ def get_admin_server_embed(is_owner: bool = False) -> discord.Embed:
     )
 
     embed.add_field(
-        name="📊 !poll (or !health)",
-        value="View live engine telemetry, uptime, gateway latency, and per-course polling timestamps.\n`!poll`",
+        name="📊 !poll",
+        value="View live engine telemetry, uptime, gateway latency, and per-course polling timestamps (alias: `!health`).\n`!poll`",
         inline=True,
     )
 
@@ -563,7 +563,7 @@ class AdminHelpSelect(discord.ui.Select):
                 label="Server Provisioning & Roles",
                 value="server",
                 emoji="🏛️",
-                description="!setupchannels, !prune, !health, and !admin delegation.",
+                description="!setupchannels, !prune, !poll, and !admin delegation.",
             ),
             discord.SelectOption(
                 label="Student Commands Guide",
