@@ -106,7 +106,7 @@ class PlaywrightSessionRefresher:
                         ],
                     )
 
-                # Format and inject cookies into browser context
+                # Format and inject cookies into browser context using URL target for proper domain matching
                 playwright_cookies = []
                 for k, v in cookies.items():
                     if not k or not v:
@@ -114,14 +114,13 @@ class PlaywrightSessionRefresher:
                     playwright_cookies.append({
                         "name": str(k).strip(),
                         "value": str(v).strip(),
-                        "domain": "archershub.dlsu.edu.ph",
+                        "url": "https://archershub.dlsu.edu.ph",
                         "path": "/",
-                        "secure": True,
                     })
 
                 if playwright_cookies:
                     await self._browser_context.add_cookies(playwright_cookies)
-                    logger.info(f"🤖 [SessionKeeper] Injected {len(playwright_cookies)} cookies into persistent browser.")
+                    logger.info(f"🤖 [SessionKeeper] Injected {len(playwright_cookies)} cookies into persistent browser context.")
 
                 # Open or reuse page
                 if not self._browser_context.pages:
@@ -144,6 +143,12 @@ class PlaywrightSessionRefresher:
                     self.live_page_title = "CourseFinder"
 
                 logger.info(f"🤖 [SessionKeeper] Navigated to {self.live_url} ('{self.live_page_title}') | Status: {response.status if response else 200}")
+
+                if "login" in self.live_url.lower() or "signin" in self.live_url.lower():
+                    self.last_status = "NEEDS_REAUTH"
+                    self.last_error = f"Redirected to login: {self.live_url}"
+                    logger.warning(f"🤖 [SessionKeeper] Injected cookies were invalid or expired: {self.live_url}")
+                    return False
 
                 # Extract live cookies after initial load
                 await self._harvest_and_sync_cookies()
@@ -170,6 +175,14 @@ class PlaywrightSessionRefresher:
             return {}
 
         try:
+            # Guard against harvesting cookies while on a login page
+            if self._page:
+                url_lower = str(self._page.url).lower()
+                if "login" in url_lower or "signin" in url_lower:
+                    logger.warning(f"🤖 [SessionKeeper] Headless page is at login URL ({self._page.url}). Suppressing cookie harvest.")
+                    self.last_status = "SESSION_EXPIRED_LOGIN_PAGE"
+                    return {}
+
             raw_cookies = await self._browser_context.cookies()
             cookies_dict = {
                 c["name"]: c["value"]
@@ -198,7 +211,7 @@ class PlaywrightSessionRefresher:
 
     async def _background_keepalive_loop(self):
         """
-        Lightweight background daemon that touches the page every 5 minutes.
+        Lightweight background daemon that performs a full page reload every 5 minutes.
         Ensures ASP.NET IIS sliding expiration is continuously extended 24/7.
         """
         logger.info("🤖 [SessionKeeper] Background 5-minute keep-alive pulse daemon started.")
@@ -212,29 +225,25 @@ class PlaywrightSessionRefresher:
                 if not self.is_running or self._page is None:
                     break
 
-                logger.debug("🤖 [SessionKeeper] 5-minute keep-alive pulse: touching CourseFinder portal...")
-                # Touch dropdown list endpoint via Javascript inside the browser context
+                logger.info("🤖 [SessionKeeper] 5-minute keep-alive pulse: reloading CourseFinder page...")
                 try:
-                    await self._page.evaluate("""
-                        () => {
-                            if (window.fetch) {
-                                window.fetch('/CourseFinder/GetAllDropDownList/', {
-                                    method: 'POST',
-                                    headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
-                                    body: 'Campusno=7'
-                                }).catch(() => {});
-                            }
-                        }
-                    """)
-                except Exception:
-                    # Soft reload fallback if evaluation fails
+                    response = await self._page.goto(self.target_url, wait_until="domcontentloaded", timeout=25000)
+                    await asyncio.sleep(2.0)
+                    self.live_url = self._page.url
                     try:
-                        await self._page.reload(wait_until="domcontentloaded", timeout=15000)
+                        self.live_page_title = await self._page.title()
                     except Exception:
                         pass
 
-                # Harvest refreshed session tokens
-                await self._harvest_and_sync_cookies()
+                    if "login" in self.live_url.lower() or "signin" in self.live_url.lower():
+                        self.last_status = "NEEDS_REAUTH"
+                        logger.warning(f"🤖 [SessionKeeper] Keep-alive reload landed on login URL: {self.live_url}")
+                    else:
+                        self.last_status = "RUNNING_24_7"
+                        await self._harvest_and_sync_cookies()
+
+                except Exception as pulse_err:
+                    logger.debug(f"🤖 [SessionKeeper] Keep-alive pulse error: {pulse_err}")
 
             except asyncio.CancelledError:
                 break
