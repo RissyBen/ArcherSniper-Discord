@@ -1282,15 +1282,12 @@ class AdminCog(commands.Cog, name="Admin"):
     # ==========================================
 
     @commands.command(name="keeper", aliases=["refresher", "headlesstab"])
+    @is_admin()
     async def keeper_command(self, ctx: commands.Context, action: str = "status"):
         """
         Manages the 24/7 Cloud VM Headless Chromium Persistent Session Keeper.
         Syntax: !keeper status, !keeper restart, !keeper sync, !keeper stop
         """
-        if not await self._is_admin(ctx.author):
-            await ctx.send("❌ You do not have permission to manage the session keeper.")
-            return
-
         action_clean = action.strip().lower()
 
         if not self.engine or not hasattr(self.engine, "session_refresher"):
