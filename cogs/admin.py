@@ -157,7 +157,7 @@ class PollPaginationView(discord.ui.View):
         courses_list: list[dict],
         active_watchers: int = 0,
         current_page: int = 1,
-        per_page: int = 12,
+        per_page: int = 8,
         user_id: int | None = None,
         timeout: float = 300.0,
     ):
@@ -791,16 +791,16 @@ class AdminCog(commands.Cog, name="Admin"):
             courses_list=courses,
             active_watchers=active_watchers,
             page=1,
-            per_page=12,
+            per_page=8,
         )
 
-        if len(courses) > 12:
+        if len(courses) > 8:
             view = PollPaginationView(
                 poll_data=poll_data,
                 courses_list=courses,
                 active_watchers=active_watchers,
                 current_page=1,
-                per_page=12,
+                per_page=8,
                 user_id=ctx.author.id,
             )
             await ctx.send(embed=embed, view=view)

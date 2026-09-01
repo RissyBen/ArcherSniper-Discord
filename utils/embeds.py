@@ -916,7 +916,7 @@ def create_poll_status_embed(
     courses_list: list[dict],
     active_watchers: int = 0,
     page: int = 1,
-    per_page: int = 12,
+    per_page: int = 8,
 ) -> discord.Embed:
     """Builds a comprehensive live engine diagnostics & course polling telemetry embed with pagination."""
     import math
@@ -970,22 +970,23 @@ def create_poll_status_embed(
             is_ge = classify_course(code).is_ge_lc
             tag = "🎯 GE/LC" if is_ge else "🔔 Watched"
 
-            name_disp = f" ({name[:25]}...)" if len(name) > 28 else (f" ({name})" if name and name != code else "")
-            sec_disp = f"`{sec_cnt} sections` • " if sec_cnt is not None else ""
+            name_disp = f" ({name[:20]}...)" if len(name) > 23 else (f" ({name})" if name and name != code else "")
+            sec_disp = f"`{sec_cnt} secs` • " if sec_cnt is not None else ""
 
             if last_ts:
                 diff_sec = max(0, int(now_ts - last_ts))
-                if diff_sec < 60:
-                    ago_str = f"{diff_sec}s ago"
-                else:
-                    ago_str = f"{diff_sec // 60}m {diff_sec % 60}s ago"
-                lines.append(f"🟢 **`{code}`** `[{tag}]`{name_disp}\n> {sec_disp}last polled `{ago_str}`")
+                ago_str = f"{diff_sec}s ago" if diff_sec < 60 else f"{diff_sec // 60}m {diff_sec % 60}s ago"
+                lines.append(f"🟢 **`{code}`** `[{tag}]`{name_disp} — {sec_disp}polled `{ago_str}`")
             else:
-                lines.append(f"🟢 **`{code}`** `[{tag}]`{name_disp}\n> {sec_disp}active in 15s loop")
+                lines.append(f"🟢 **`{code}`** `[{tag}]`{name_disp} — {sec_disp}active in 15s loop")
+
+        field_content = "\n".join(lines)
+        if len(field_content) > 1020:
+            field_content = field_content[:1016] + "..."
 
         embed.add_field(
             name=f"📡 Live Monitored Subjects ({len(page_courses)} on Page {cur_page}/{total_pages})",
-            value="\n".join(lines),
+            value=field_content,
             inline=False,
         )
 
