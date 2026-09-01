@@ -1277,6 +1277,87 @@ class AdminCog(commands.Cog, name="Admin"):
         embed.set_footer(text="ArcherSniper Real-Time Test Simulation • !simulate <CODE> <SEC> <SLOTS>")
         await ctx.send(embed=embed)
 
+    # ==========================================
+    # HEADLESS BROWSER 24/7 SESSION KEEPER
+    # ==========================================
+
+    @commands.command(name="keeper", aliases=["refresher", "headlesstab"])
+    async def keeper_command(self, ctx: commands.Context, action: str = "status"):
+        """
+        Manages the 24/7 Cloud VM Headless Chromium Persistent Session Keeper.
+        Syntax: !keeper status, !keeper restart, !keeper sync, !keeper stop
+        """
+        if not await self._is_admin(ctx.author):
+            await ctx.send("❌ You do not have permission to manage the session keeper.")
+            return
+
+        action_clean = action.strip().lower()
+
+        if not self.engine or not hasattr(self.engine, "session_refresher"):
+            await ctx.send("❌ Session keeper engine is not initialized.")
+            return
+
+        refresher = self.engine.session_refresher
+
+        if action_clean in ("status", "info"):
+            status_data = refresher.get_status()
+            is_active = status_data.get("is_running", False)
+            color = 0x00E676 if is_active else 0xFFA000
+
+            embed = discord.Embed(
+                title="🤖 Headless Chromium 24/7 Session Keeper",
+                description=(
+                    f"**State:** `{'🟢 RUNNING (24/7 Active)' if is_active else '🟡 ' + status_data.get('status', 'IDLE')}`\n\n"
+                    f"> 🌐 **Tab URL:** `{status_data.get('live_url', 'N/A')}`\n"
+                    f"> 📑 **Page Title:** `{status_data.get('page_title', 'N/A')}`\n"
+                    f"> 🍪 **Extracted Cookies:** `{status_data.get('extracted_cookies', 0)} active session tokens`\n"
+                    f"> ⏱️ **Last Refreshed:** `{status_data.get('last_refreshed') or 'Not yet synced'}`\n"
+                    f"> 📁 **Browser Profile:** `{status_data.get('profile_dir')}`\n"
+                    + (f"> ⚠️ **Last Error:** `{status_data.get('last_error')}`\n" if status_data.get("last_error") else "")
+                ),
+                color=color,
+                timestamp=datetime.now(timezone.utc),
+            )
+            embed.set_footer(text="ArcherSniper Autonomous Session Keeper • !keeper status|restart|sync|stop")
+            await ctx.send(embed=embed)
+
+        elif action_clean in ("restart", "start", "launch"):
+            await ctx.send("🤖 Launching persistent headless Chromium browser on Cloud VM...")
+            auth = await self.db.get_master_auth()
+            if not auth or not auth.get("cookies"):
+                await ctx.send("❌ No master cookies found in database to inject. Please provide cookies with `!setcurl` first.")
+                return
+            success = await refresher.inject_and_start_keeper(auth["cookies"], auth.get("headers"))
+            if success:
+                await ctx.send(
+                    f"🟢 **Headless Chromium Session Keeper is RUNNING!**\n"
+                    f"> 📑 Opened: `{refresher.live_url}`\n"
+                    f"> 🍪 Extracted: `{refresher.extracted_cookie_count}` active cookies.\n"
+                    f"> 🛡️ You may now safely close your ArchersHub tab on your phone/PC!"
+                )
+            else:
+                await ctx.send(f"❌ Failed to launch headless browser: `{refresher.last_error or 'Unknown error'}`")
+
+        elif action_clean in ("sync", "harvest"):
+            await ctx.send("🔄 Extracting live session cookies from headless browser tab...")
+            cookies = await refresher.extract_live_cookies()
+            if cookies:
+                await self.db.update_master_cookies(cookies)
+                self.engine.api.update_auth(cookies)
+                await ctx.send(f"✅ Successfully harvested and saved **`{len(cookies)}`** live session cookies from the headless browser!")
+            else:
+                await ctx.send("⚠️ Headless browser is currently idle or did not return cookies. Try `!keeper restart`.")
+
+        elif action_clean in ("stop", "kill"):
+            await refresher.close()
+            await ctx.send("🛑 Headless Chromium browser context closed and stopped.")
+
+        else:
+            await ctx.send(
+                f"❌ Unknown action `{action}`.\n"
+                f"> **Available Actions:** `!keeper status`, `!keeper restart`, `!keeper sync`, `!keeper stop`"
+            )
+
 
 async def setup(bot: commands.Bot):
     db = getattr(bot, "db", None)

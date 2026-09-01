@@ -32,6 +32,7 @@ DUPLICATES_LOG_PATH = LOGS_DIR / "duplicate_alerts.log"
 AUTODISCOVERY_LOG_PATH = LOGS_DIR / "auto_discovery.log"
 WATCHDOG_CYCLES_LOG_PATH = LOGS_DIR / "watchdog_cycles.log"
 COURSE_CADENCE_LOG_PATH = LOGS_DIR / "course_refetch_cadence.log"
+BROWSER_PROFILE_DIR = DATA_DIR / "browser_profile"
 
 # Ensure all log files exist on disk for tail commands
 for _p in (

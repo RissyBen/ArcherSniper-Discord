@@ -109,6 +109,24 @@ class WatchdogEngine:
         self.disconnect_alert_sent: bool = False
         self.disconnect_grace_period_seconds: int = 300  # 5 minutes grace period before pinging admins
 
+        # Tier 2 Headless Browser 24/7 Persistent Session Keeper
+        self.session_refresher = PlaywrightSessionRefresher(
+            on_cookie_update=self._handle_keeper_cookie_update,
+        )
+
+    async def _handle_keeper_cookie_update(self, fresh_cookies: dict[str, str]):
+        """Callback from PlaywrightSessionRefresher when fresh cookies are harvested from the browser."""
+        if not fresh_cookies:
+            return
+        logger.info(f"🤖 [Engine] Received {len(fresh_cookies)} rolled cookies from Playwright Session Keeper.")
+        self.api.update_auth(fresh_cookies)
+        await self.db.update_master_cookies(fresh_cookies)
+        if not self.is_connected:
+            self.is_connected = True
+            self.session_expired = False
+            self.session_connected_time = time.time()
+            await self._on_reconnect_success("Playwright Headless Session Keeper")
+
     async def initialize(self):
         """Loads cached states, system configuration, and master auth."""
         state = await self.db.get_system_state()
@@ -144,6 +162,8 @@ class WatchdogEngine:
             self.polling_task = asyncio.create_task(self._polling_loop(), name="ArcherSniper_Poller")
         if self.heartbeat_task is None or self.heartbeat_task.done():
             self.heartbeat_task = asyncio.create_task(self._heartbeat_loop(), name="ArcherSniper_Heartbeat")
+        if self.is_connected and self.bot_active:
+            asyncio.create_task(self._start_keeper_from_db())
         logger.info("Background watchdog polling and keep-alive loops started.")
         ts_init = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
         _append_log_line(
@@ -151,12 +171,20 @@ class WatchdogEngine:
             f"[{ts_init}] SYSTEM -> Watchdog Engine started (Interval: {self.poll_interval}s, Active: {self.bot_active}, Session: {'CONNECTED' if self.is_connected else 'DISCONNECTED'})"
         )
 
+    async def _start_keeper_from_db(self):
+        """Helper to start the persistent session keeper using current DB auth."""
+        auth = await self.db.get_master_auth()
+        if auth and auth.get("cookies") and not self.session_refresher.is_running:
+            await self.session_refresher.inject_and_start_keeper(auth["cookies"], auth.get("headers"))
+
     async def stop_tasks(self):
         """Stops background tasks gracefully."""
         if self.polling_task and not self.polling_task.done():
             self.polling_task.cancel()
         if self.heartbeat_task and not self.heartbeat_task.done():
             self.heartbeat_task.cancel()
+        if self.session_refresher and self.session_refresher.is_running:
+            await self.session_refresher.close()
         logger.info("Background watchdog tasks stopped.")
 
     # ==========================================
@@ -1114,6 +1142,10 @@ class WatchdogEngine:
             is_valid = False
 
         if is_valid:
+            # Launch or update 24/7 background persistent headless browser keeper
+            asyncio.create_task(
+                self.session_refresher.inject_and_start_keeper(new_cookies, new_headers)
+            )
             await self._on_reconnect_success(source_label)
             return True
         else:
@@ -1137,11 +1169,28 @@ class WatchdogEngine:
         except Exception:
             pass
 
-        # Tier 2: Headless Playwright Autonomous Refresher
+        # Tier 2: Check live cookies from active 24/7 Headless Keeper
+        try:
+            live_cookies = await self.session_refresher.extract_live_cookies()
+            if live_cookies:
+                auth = await self.db.get_master_auth()
+                headers = auth.get("headers") if auth else None
+                reconnected = await self.reconnect_with_new_auth(
+                    new_cookies=live_cookies,
+                    new_headers=headers,
+                    source_label="Tier 2 Live Headless Keeper Extraction",
+                )
+                if reconnected:
+                    logger.info("🟢 [Tier 2] Session recovered via Live Headless Keeper Extraction!")
+                    self.is_reconnecting = False
+                    return
+        except Exception as e:
+            logger.debug(f"Live keeper extraction check skipped: {e}")
+
+        # Tier 2 Fallback: Launch Headless Chromium one-shot refresh
         try:
             logger.info("🤖 [Tier 2] Launching Headless Chromium to automatically refresh session...")
-            refresher = PlaywrightSessionRefresher()
-            fresh_cookies = await refresher.refresh_session(timeout_seconds=20.0)
+            fresh_cookies = await self.session_refresher.refresh_session(timeout_seconds=20.0)
             if fresh_cookies:
                 auth = await self.db.get_master_auth()
                 headers = auth.get("headers") if auth else None
