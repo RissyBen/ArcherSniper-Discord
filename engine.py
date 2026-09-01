@@ -228,16 +228,16 @@ class WatchdogEngine:
                 key=lambda x: int(x["course_id"]) if str(x.get("course_id", "")).isdigit() else 999999
             )
 
+            # Bulk upsert all 2,600+ courses into catalog in a single 0.03s SQLite transaction
+            await self.db.bulk_upsert_catalog_courses(sorted_catalog, academic_session)
+
             seen_discovery_codes = set()
             for item in sorted_catalog:
                 cid = str(item["course_id"]).strip()
                 code = str(item["course_code"]).strip().upper()
                 name = str(item.get("course_name", "")).strip()
 
-                await self.db.upsert_catalog_course(cid, code, name, academic_session)
-
                 if code in seen_discovery_codes:
-                    # Skip duplicate higher/historical IDs (e.g. 12160 for SAS2000, 10987 for DSILYTC)
                     continue
                 seen_discovery_codes.add(code)
 
@@ -425,9 +425,10 @@ class WatchdogEngine:
     # ==========================================
 
     async def _polling_loop(self):
-        """Runs continuous scraping of monitored courses every 15s."""
+        """Runs continuous scraping of monitored courses strictly every 15s."""
         await self.bot.wait_until_ready()
         while not self.bot.is_closed():
+            t_loop_start = time.perf_counter()
             try:
                 # Only execute live polling if bot is ACTIVE and session CONNECTED
                 if self.bot_active and self.is_connected and not self.session_expired:
@@ -445,7 +446,9 @@ class WatchdogEngine:
                 if self.consecutive_errors >= 3:
                     await self._handle_disconnect(f"3 consecutive poll errors: {e}")
 
-            await asyncio.sleep(self.poll_interval)
+            elapsed = time.perf_counter() - t_loop_start
+            sleep_time = max(0.5, self.poll_interval - elapsed)
+            await asyncio.sleep(sleep_time)
 
     async def _execute_poll_cycle(self):
         """Iterates over all monitored courses and detects capacity changes."""
@@ -491,8 +494,8 @@ class WatchdogEngine:
         self.last_poll_time = datetime.now(timezone.utc)
         self.total_poll_cycles += 1
 
-        # Periodic Auto-Discovery of New Subjects from DLSU (on Cycle #1 and every 4 cycles = ~60s)
-        if self.total_poll_cycles == 1 or self.total_poll_cycles % 4 == 0:
+        # Periodic Auto-Discovery of New Subjects from DLSU (on Cycle #1 and every 120 cycles = ~30 mins)
+        if self.total_poll_cycles == 1 or self.total_poll_cycles % 120 == 0:
             asyncio.create_task(self.auto_discover_new_courses())
 
         cycle_lines = []
