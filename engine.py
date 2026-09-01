@@ -539,10 +539,11 @@ class WatchdogEngine:
                 t_fetch_start = time.perf_counter()
                 sections = await self.api.fetch_section_data(cid)
                 fetch_dur_ms = (time.perf_counter() - t_fetch_start) * 1000.0
-                self.course_last_polled[code] = time.time()
-                self.course_last_sections[code] = len(sections)
-                self.course_last_status[code] = "200 OK"
-                self.course_last_latency[code] = fetch_dur_ms
+                code_clean = code.strip().upper()
+                self.course_last_polled[code_clean] = time.time()
+                self.course_last_sections[code_clean] = len(sections)
+                self.course_last_status[code_clean] = "200 OK"
+                self.course_last_latency[code_clean] = fetch_dur_ms
                 sec_items = []
                 for sec in sections:
                     s_name = sec.get("section_name", "")

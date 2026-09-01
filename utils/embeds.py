@@ -985,9 +985,9 @@ def create_poll_status_embed(
                 diff_sec = max(0, int(now_ts - last_ts))
                 ago_str = f"{diff_sec}s ago" if diff_sec < 60 else f"{diff_sec // 60}m {diff_sec % 60}s ago"
                 lat_str = f" ({lat_ms:.0f}ms)" if lat_ms is not None else ""
-                lines.append(f"🟢 `{code:<8}` {tag_box} ➔ {sec_label} • Polled: `{ago_str}`{lat_str}")
+                lines.append(f"🟢 `{code:<8}` {tag_box} ➔ {sec_label} • Last Fetched: `{ago_str}`{lat_str}")
             else:
-                lines.append(f"🟢 `{code:<8}` {tag_box} ➔ {sec_label} • Status: `Active in 15s loop`")
+                lines.append(f"🟢 `{code:<8}` {tag_box} ➔ {sec_label} • Last Fetched: `Queued (15s cadence)`")
 
         field_content = "\n".join(lines)
         if len(field_content) > 1020:
