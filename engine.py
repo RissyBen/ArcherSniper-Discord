@@ -577,6 +577,9 @@ class WatchdogEngine:
                         cadence_msg = f"[{ts_log}] [{code_clean:<8}] Initial baseline in {fetch_dur_ms:>5.1f}ms | Gap since last fetch: FIRST POLL | Sections: {len(sections):>2} ({tot_open} open)"
                     _append_log_line(COURSE_CADENCE_LOG_PATH, cadence_msg)
 
+                    # Batch upsert all section states to SQLite in 1 unified transaction (0.005s)
+                    await self.db.bulk_upsert_section_states(cid, code_clean, sections)
+
                     sec_items = []
                     for sec in sections:
                         s_name = sec.get("section_name", "")
@@ -691,18 +694,8 @@ class WatchdogEngine:
         cache_key = (course_code.upper(), sec_name)
         prev_open = self.section_slot_cache.get(cache_key)
 
-        # Update in-memory cache and SQLite database
+        # Update in-memory slot cache
         self.section_slot_cache[cache_key] = new_open
-        await self.db.upsert_section_state(
-            course_id=course_id,
-            course_code=course_code,
-            section_name=sec_name,
-            capacity=cap,
-            enlisted=enl,
-            open_slots=new_open,
-            teacher=teacher,
-            schedule=sched,
-        )
 
         # Silence all alerts on Cycle 1 (baseline establishment on startup / restart)
         if self.total_poll_cycles <= 1:

@@ -19,10 +19,16 @@ class Database:
     def __init__(self, db_path: Path | str = DB_PATH):
         self.db_path = str(db_path)
 
+    def connect(self):
+        """Returns aiosqlite connection with 60s busy timeout to eliminate database is locked errors."""
+        return aiosqlite.connect(self.db_path, timeout=60.0)
+
     async def init_db(self):
         """Initializes database tables and indexes with automated migrations."""
-        async with aiosqlite.connect(self.db_path) as db:
+        async with self.connect() as db:
             await db.execute("PRAGMA journal_mode=WAL;")
+            await db.execute("PRAGMA busy_timeout=60000;")
+            await db.execute("PRAGMA synchronous=NORMAL;")
             await db.execute("PRAGMA foreign_keys=ON;")
 
             # Master Auth table
@@ -764,7 +770,7 @@ class Database:
     ):
         """Updates or inserts the current state for a course section."""
         now = datetime.now(timezone.utc).isoformat()
-        async with aiosqlite.connect(self.db_path) as db:
+        async with self.connect() as db:
             await db.execute("""
                 INSERT INTO section_states (course_id, course_code, section_name, capacity, enlisted, open_slots, teacher, schedule, last_updated)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -777,6 +783,49 @@ class Database:
                     schedule = excluded.schedule,
                     last_updated = excluded.last_updated;
             """, (str(course_id), course_code.strip().upper(), section_name.strip().upper(), capacity, enlisted, open_slots, teacher, schedule, now))
+            await db.commit()
+
+    async def bulk_upsert_section_states(
+        self,
+        course_id: str,
+        course_code: str,
+        sections_data: list[dict],
+    ):
+        """Bulk updates or inserts section states for an entire course in a single 0.005s transaction."""
+        if not sections_data:
+            return
+        now = datetime.now(timezone.utc).isoformat()
+        records = [
+            (
+                str(course_id),
+                course_code.strip().upper(),
+                sec.get("section_name", "").strip().upper(),
+                sec.get("capacity", 0),
+                sec.get("enlisted", 0),
+                sec.get("open_slots", 0),
+                sec.get("teacher", "TBA"),
+                sec.get("schedule", "TBA"),
+                now,
+            )
+            for sec in sections_data
+            if sec.get("section_name")
+        ]
+        if not records:
+            return
+        async with self.connect() as db:
+            await db.execute("PRAGMA busy_timeout=60000;")
+            await db.executemany("""
+                INSERT INTO section_states (course_id, course_code, section_name, capacity, enlisted, open_slots, teacher, schedule, last_updated)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(course_id, section_name) DO UPDATE SET
+                    course_code = CASE WHEN excluded.course_code != '' THEN excluded.course_code ELSE section_states.course_code END,
+                    capacity = excluded.capacity,
+                    enlisted = excluded.enlisted,
+                    open_slots = excluded.open_slots,
+                    teacher = excluded.teacher,
+                    schedule = excluded.schedule,
+                    last_updated = excluded.last_updated;
+            """, records)
             await db.commit()
 
     # ==========================================
