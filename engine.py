@@ -98,6 +98,8 @@ class WatchdogEngine:
         self.start_time = datetime.now(timezone.utc)
         self.course_last_polled: dict[str, float] = {}
         self.course_last_sections: dict[str, int] = {}
+        self.course_last_status: dict[str, str] = {}
+        self.course_last_latency: dict[str, float] = {}
 
         # Background Tasks & Grace Timers
         self.polling_task: asyncio.Task | None = None
@@ -534,9 +536,13 @@ class WatchdogEngine:
                     continue
 
             try:
+                t_fetch_start = time.perf_counter()
                 sections = await self.api.fetch_section_data(cid)
+                fetch_dur_ms = (time.perf_counter() - t_fetch_start) * 1000.0
                 self.course_last_polled[code] = time.time()
                 self.course_last_sections[code] = len(sections)
+                self.course_last_status[code] = "200 OK"
+                self.course_last_latency[code] = fetch_dur_ms
                 sec_items = []
                 for sec in sections:
                     s_name = sec.get("section_name", "")
@@ -1197,6 +1203,8 @@ class WatchdogEngine:
             "total_alerts_sent": self.total_alerts_sent,
             "course_polling": self.course_last_polled.copy(),
             "course_sections": self.course_last_sections.copy(),
+            "course_status": self.course_last_status.copy(),
+            "course_latency": self.course_last_latency.copy(),
         }
 
     def get_health_data(self) -> dict:

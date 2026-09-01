@@ -959,6 +959,7 @@ def create_poll_status_embed(
     else:
         polling_map = poll_data.get("course_polling", {})
         sections_map = poll_data.get("course_sections", {})
+        latency_map = poll_data.get("course_latency", {})
         now_ts = time.time()
         watch_set = watchlisted_codes or set()
 
@@ -967,19 +968,26 @@ def create_poll_status_embed(
             code = c.get("course_code", "").strip().upper()
             last_ts = polling_map.get(code)
             sec_cnt = sections_map.get(code)
+            lat_ms = latency_map.get(code)
 
             is_watched = code in watch_set
             tag = "🔔 Watched" if is_watched else "🎯 GE/LC"
             tag_box = f"`[{tag}]`" if is_watched else "`[🎯 GE/LC]  `"
 
-            sec_str = f"`{sec_cnt:>2}` secs" if sec_cnt is not None else "`--` secs"
+            # Clear Section Count (e.g. "1 Section" or "6 Sections")
+            if sec_cnt is not None:
+                sec_word = "Section" if sec_cnt == 1 else "Sections"
+                sec_label = f"**{sec_cnt} {sec_word}**"
+            else:
+                sec_label = "**-- Sections**"
 
             if last_ts:
                 diff_sec = max(0, int(now_ts - last_ts))
                 ago_str = f"{diff_sec}s ago" if diff_sec < 60 else f"{diff_sec // 60}m {diff_sec % 60}s ago"
-                lines.append(f"🟢 `{code:<8}` {tag_box} — {sec_str} • polled `{ago_str}`")
+                lat_str = f" ({lat_ms:.0f}ms)" if lat_ms is not None else ""
+                lines.append(f"🟢 `{code:<8}` {tag_box} ➔ {sec_label} • Polled: `{ago_str}`{lat_str}")
             else:
-                lines.append(f"🟢 `{code:<8}` {tag_box} — {sec_str} • active in 15s loop")
+                lines.append(f"🟢 `{code:<8}` {tag_box} ➔ {sec_label} • Status: `Active in 15s loop`")
 
         field_content = "\n".join(lines)
         if len(field_content) > 1020:
