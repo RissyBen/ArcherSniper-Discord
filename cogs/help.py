@@ -116,9 +116,10 @@ def get_admin_overview_embed(is_owner: bool = False) -> discord.Embed:
         value=(
             "Use the **Interactive Dropdown Menu** below to view detailed syntax and examples:\n\n"
             "• ⚙️ **Engine & Watchdog Suite** — `!start`, `!stop`, `!sweep`, `!startgelc`, `!interval`, `!sync`, `!simulate`\n"
-            "• 📊 **Logs & Data Inspection** — `!fetchdata`, `!logs`, `!scraperlog`, `!userstatus`, `!inspectcourse`\n"
-            "• 🔑 **Session Auth & Tokens** — `!session`, `!cookies`, `!setcurl`, `!bookmarklet`, `!removecurl`\n"
-            "• 🏛️ **Server Provisioning & Roles** — `!setupchannels`, `!prune`, `!poll`, `!admin`\n"
+            "• 📊 **Logs & Data Inspection** — `!fetchdata`, `!logs` *(watchdog|drops|dms|cadence|heartbeat)*, `!scraperlog`, `!userstatus`\n"
+            "• 🔑 **Session Auth & Tokens** — `!sessioninfo`, `!cookies`, `!setcurl`, `!bookmarklet`, `!removecurl`\n"
+            "• 🤖 **24/7 Headless Session Keeper** — `!keeper status`, `!keeper restart`, `!keeper sync`, `!keeper stop`\n"
+            "• 🏛️ **Server Provisioning & Roles** — `!setupchannels`, `!prune`, `!poll` *(or `!health`)*, `!admin`\n"
             "• 🎯 **Student Commands Guide** — All 11 public student commands"
         ),
         inline=False,
@@ -301,11 +302,12 @@ def get_admin_data_embed() -> discord.Embed:
         name="📜 !logs [type] [lines]",
         value=(
             "Direct in-Discord real-time log inspector:\n"
+            "> • `!logs cadence 15` — 15-second per-course polling gap & timing log\n"
             "> • `!logs watchdog 15` — Polling loop speeds and cycle timings\n"
             "> • `!logs drops 10` — Live slot drop events history\n"
             "> • `!logs dms 10` — Student DM dispatch log\n"
-            "> • `!logs autodiscovery 5` — Course catalog discovery sync log\n"
-            "> • `!logs heartbeat 10` — 60-second keep-alive pulse log"
+            "> • `!logs heartbeat 10` — 60-second keep-alive pulse log\n"
+            "> • `!logs autodiscovery 5` — Course catalog discovery sync log"
         ),
         inline=False,
     )
@@ -345,10 +347,23 @@ def get_admin_auth_embed() -> discord.Embed:
     )
 
     embed.add_field(
-        name="🔑 !session  (or !cookies, !authinfo)",
+        name="🔑 !sessioninfo  (or !cookies, !authinfo, !session)",
         value=(
-            "Inspect stored master session cookies, active request headers, and connection age.\n"
-            "> Shows masked `.ASPXAUTH`, `ASP.NET_SessionId`, `RequestVerificationToken`, and latency."
+            "Inspect stored master session cookies, request headers, and token age:\n"
+            "> • **Live Expiry:** Shows `Session Age: ⏱️ 4.2h / 6.0h max (~108m left)`\n"
+            "> • Shows masked `.ASPXAUTH`, `ASP.NET_SessionId`, and network latency."
+        ),
+        inline=False,
+    )
+
+    embed.add_field(
+        name="🤖 !keeper [status|restart|sync|stop]",
+        value=(
+            "Manage the 24/7 Cloud VM Headless Chromium Persistent Session Keeper:\n"
+            "> • `!keeper status` — View live browser tab URL, page title, and extracted cookies\n"
+            "> • `!keeper restart` — Launch persistent background browser tab on Cloud VM\n"
+            "> • `!keeper sync` — Harvest live cookies from headless tab into database\n"
+            "> • `!keeper stop` — Gracefully stop the headless browser"
         ),
         inline=False,
     )
@@ -358,7 +373,8 @@ def get_admin_auth_embed() -> discord.Embed:
         value=(
             "Link a fresh Master Browser Session from Archer's Hub:\n"
             "> • Cookie String: `!cookie ASP.NET_SessionId=...; .ASPXAUTH=...`\n"
-            "> • Full cURL: `!setcurl curl 'https://archershub.dlsu.edu.ph/CourseFinder/GetCFData/' ...`"
+            "> • Full cURL: `!setcurl curl 'https://archershub.dlsu.edu.ph/CourseFinder/GetCFData/' ...`\n"
+            "> • *Note: Reconnecting automatically applies a silent re-baseline (0 stale alerts).*"
         ),
         inline=False,
     )
@@ -554,10 +570,10 @@ class AdminHelpSelect(discord.ui.Select):
                 description="!fetchdata, !logs, !scraperlog, !userstatus, !inspectcourse.",
             ),
             discord.SelectOption(
-                label="Session Auth & Tokens",
+                label="Session Auth & Keepers",
                 value="auth",
                 emoji="🔑",
-                description="!session, !cookies, !setcurl, !bookmarklet, !removecurl.",
+                description="!keeper, !sessioninfo, !cookies, !setcurl, !bookmarklet.",
             ),
             discord.SelectOption(
                 label="Server Provisioning & Roles",
