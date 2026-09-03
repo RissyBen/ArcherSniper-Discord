@@ -99,6 +99,19 @@ Running `!setupchannels` automatically creates the following categories and chan
 
 ---
 
+## 📚 Master Technical Documentation
+
+For an exhaustive, deep-dive understanding of ArcherSniper's internal engine, design patterns, and architectural decisions, explore our complete documentation suite:
+
+* 📖 **[Master Documentation Index](docs/INDEX.md)** — Complete navigation hub.
+* 🏛️ **[Architecture & System Design](docs/ARCHITECTURE.md)** — Concurrency model (`asyncio`), in-memory cache vs SQLite, and database lock elimination.
+* 🔐 **[4-Tier Authentication & 24/7 Session Keeper](docs/SESSION_KEEPER_AND_AUTH.md)** — Headless Playwright Chromium keeper, 5.5h refuel countdown, and silent re-baseline.
+* 🌐 **[DLSU API Client & Scraper Pipeline](docs/API_AND_SCRAPER_ENGINE.md)** — Reverse-engineered endpoints, cookie tokens, and latency optimizations.
+* 🎯 **[Course Classification & Dispatch](docs/COURSE_CLASSIFIER_AND_DISPATCH.md)** — Regex matching, college drop feeds, and zero-ping DM alerting.
+* 💻 **[Code Explainer & Syntax Guide](docs/CODE_EXPLAINER_AND_SYNTAX_GUIDE.md)** — Syntax deep-dive, Python modern typing, Discord.py Cog architecture, and UI views.
+
+---
+
 ## 🧪 Testing
 
 Run the automated unit test suite:

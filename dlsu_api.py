@@ -155,6 +155,7 @@ class DLSUApiClient:
         headers = self._get_base_headers()
 
         async with session.post(DLSU_CF_DATA_URL, data=payload, headers=headers) as resp:
+            # Captures and rolls newly issued Azure Application Gateway affinity and session cookies
             await self._handle_response_cookies(resp)
 
             if resp.status == 401 or resp.status == 403:
@@ -164,6 +165,10 @@ class DLSUApiClient:
                 text = await resp.text()
                 raise ValueError(f"HTTP {resp.status} received from GetCFData: {text[:200]}")
 
+            # ASP.NET Redirect Detection:
+            # DLSU's server often returns HTTP 200 OK even when sessions expire, serving an HTML
+            # login page instead of JSON. We explicitly detect <!DOCTYPE or <html to trigger
+            # immediate session recovery rather than crashing on JSON decode.
             content_type = resp.headers.get("Content-Type", "")
             if "application/json" not in content_type:
                 text = await resp.text()

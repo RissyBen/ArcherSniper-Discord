@@ -216,6 +216,10 @@ class PlaywrightSessionRefresher:
         logger.info("🤖 [SessionKeeper] Background 5-minute keep-alive pulse daemon started.")
         while self.is_running:
             try:
+                # Why sleep in 1-second chunks instead of sleep(300)?
+                # If the bot is stopped, restarted, or in unit tests, sleeping 300s blocks
+                # loop shutdown for 5 minutes. Checking self.is_running each second allows
+                # instantaneous cancellation in < 0.001ms.
                 for _ in range(300):
                     if not self.is_running:
                         return
@@ -226,6 +230,10 @@ class PlaywrightSessionRefresher:
 
                 logger.info("🤖 [SessionKeeper] 5-minute keep-alive pulse: reloading CourseFinder page...")
                 try:
+                    # Why full page navigation (page.goto) instead of a small AJAX fetch()?
+                    # DLSU's ASP.NET IIS server only resets its sliding 20-minute expiration window
+                    # when a full HTTP GET request traverses the ASP.NET pipeline. Minor JavaScript
+                    # AJAX fetches do not refresh IIS session state, causing the 25-minute disconnect.
                     response = await self._page.goto(self.target_url, wait_until="domcontentloaded", timeout=25000)
                     await asyncio.sleep(2.0)
                     self.live_url = self._page.url

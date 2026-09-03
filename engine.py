@@ -81,16 +81,31 @@ class WatchdogEngine:
         self.auto_reconnect_enabled = True
         self.is_reconnecting = False
 
-        # In-memory baseline cache: (course_code, section_name) -> open_slots
+        # -------------------------------------------------------------------------
+        # IN-MEMORY REAL-TIME STATE CACHE
+        # -------------------------------------------------------------------------
+        # self.section_slot_cache is the core real-time source of truth for the bot.
+        # Key: (course_code, section_name) uppercase tuple, e.g. ("STSWENG", "S04")
+        # Value: integer open slot count, e.g. 2
+        #
+        # Why in-memory dictionary?
+        # Enlistment slots drop and fill within seconds. Comparing in-memory numbers
+        # takes < 0.001ms (sub-microsecond), ensuring alerts dispatch with ZERO latency.
+        # SQLite is only used as a persistent backup across restarts.
         self.section_slot_cache: dict[tuple[str, str], int] = {}
         self.drop_start_times: dict[tuple[str, str], float] = {}
         self.recent_alerts: dict[tuple[str, str], tuple[int, float]] = {}
         self.recent_dm_dispatches: dict[tuple[int, str, str], tuple[int, float]] = {}
         self.session_connected_time: float = time.time()
         self.has_sent_6h_warning = False
+
+        # Silent Re-Baseline Flag:
+        # When True (e.g. immediately after bot reconnects or fresh cookies are ingested),
+        # the very next poll cycle will absorb current slot counts into cache SILENTLY.
+        # This prevents flooding channels with 15-20 stale alerts for slots that opened hours ago.
         self.needs_rebaseline: bool = False
 
-        # Statistics
+        # Statistics & Cadence Tracking
         self.total_poll_cycles = 0
         self.total_alerts_sent = 0
         self.heartbeat_count = 0
@@ -103,14 +118,15 @@ class WatchdogEngine:
         self.course_last_status: dict[str, str] = {}
         self.course_last_latency: dict[str, float] = {}
 
-        # Background Tasks & Grace Timers
+        # Background Asynchronous Tasks & Grace Timers
         self.polling_task: asyncio.Task | None = None
         self.heartbeat_task: asyncio.Task | None = None
         self.disconnect_alert_task: asyncio.Task | None = None
         self.disconnect_alert_sent: bool = False
         self.disconnect_grace_period_seconds: int = 300  # 5 minutes grace period before pinging admins
 
-        # Tier 2 Headless Browser 24/7 Persistent Session Keeper
+        # Tier 2 Headless Browser 24/7 Persistent Session Keeper (Playwright Chromium)
+        # Keeps an invisible browser context open in the background to hold the session alive.
         self.session_refresher = PlaywrightSessionRefresher(
             on_cookie_update=self._handle_keeper_cookie_update,
         )
