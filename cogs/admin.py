@@ -507,9 +507,11 @@ class AdminCog(commands.Cog, name="Admin"):
         academic_session = auth.get("academic_session") or 155 if auth else 155
         last_synced = auth.get("last_synced") if auth else None
 
-        # Test live latency if connected
+        # Test live latency & session age if connected
         latency_ms = None
+        session_age_sec = None
         if self.engine and self.engine.is_connected:
+            session_age_sec = time.time() - self.engine.session_connected_time
             t0 = time.perf_counter()
             try:
                 ok = await self.engine.api.send_heartbeat(campus_no=campus_no)
@@ -526,6 +528,7 @@ class AdminCog(commands.Cog, name="Admin"):
             academic_session=academic_session,
             last_synced=last_synced,
             latency_ms=latency_ms,
+            session_age_sec=session_age_sec,
         )
         await ctx.send(embed=embed)
 

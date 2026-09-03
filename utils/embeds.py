@@ -1319,6 +1319,7 @@ def create_session_auth_embed(
     academic_session: int = 155,
     last_synced: str | None = None,
     latency_ms: float | None = None,
+    session_age_sec: float | None = None,
 ) -> discord.Embed:
     """
     Builds a detailed, secure inspection card for the Master Browser Session and Cookies.
@@ -1328,12 +1329,19 @@ def create_session_auth_embed(
     color = COLOR_OPEN_GREEN if is_connected else COLOR_ALERT_RED
     icon = "🟢" if is_connected else "🔴"
 
+    age_str = ""
+    if session_age_sec is not None and is_connected:
+        hours = session_age_sec / 3600.0
+        remaining_mins = max(0, int((6.0 - hours) * 60))
+        age_str = f"> **Session Age:** ⏱️ **`{hours:.1f}h`** / 6.0h max (`~{remaining_mins}m` left)\n"
+
     embed = discord.Embed(
         title=f"🔑 DLSU Master Session & Cookie Inspector",
         description=(
             f"> **Connection Status:** {icon} **`{status.upper()}`**\n"
             f"> **Campus & Session:** `Campus #{campus_no}` • `Session #{academic_session}`\n"
             f"> **Active Cookies:** **`{len(cookies)}` stored**\n"
+            f"{age_str}"
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         ),
         color=color,

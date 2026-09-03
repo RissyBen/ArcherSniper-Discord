@@ -88,6 +88,7 @@ class WatchdogEngine:
         self.recent_dm_dispatches: dict[tuple[int, str, str], tuple[int, float]] = {}
         self.session_connected_time: float = time.time()
         self.has_sent_6h_warning = False
+        self.needs_rebaseline: bool = False
 
         # Statistics
         self.total_poll_cycles = 0
@@ -211,10 +212,11 @@ class WatchdogEngine:
                         if self.heartbeat_count % 30 == 0:
                             asyncio.create_task(self.auto_discover_new_courses())
 
-                        # Proactive 6-Hour Session Age Notice
-                        if time.time() - self.session_connected_time > 21600 and not self.has_sent_6h_warning:
+                        # Proactive 5.5-Hour Session Refuel Notice (19,800s = 5.5h)
+                        session_age_sec = time.time() - self.session_connected_time
+                        if session_age_sec > 19800 and not self.has_sent_6h_warning:
                             self.has_sent_6h_warning = True
-                            await self._send_proactive_session_notice()
+                            await self._send_proactive_session_notice(session_age_sec)
                     else:
                         logger.warning("Keep-alive heartbeat failed.")
                         await self._log_heartbeat_pulse(401, latency_ms)
@@ -387,14 +389,18 @@ class WatchdogEngine:
                         return tc
         return None
 
-    async def _send_proactive_session_notice(self):
-        """Sends an early notice to #🚨-admin-disconnects when cookies are 6+ hours old."""
+    async def _send_proactive_session_notice(self, session_age_sec: float = 19800.0):
+        """Sends an early notice to #🚨-admin-disconnects when cookies reach 5.5 hours old."""
+        hours = session_age_sec / 3600.0
+        remaining_mins = max(1, int((6.0 - hours) * 60))
         embed = create_system_alert_embed(
-            title="ℹ️ Master cURL Session Age Notice (6+ Hours)",
+            title="⏰ Master Session Refuel Notice (5.5+ Hours)",
             description=(
-                "**Current Archer's Hub browser session has been active for over 6 hours.**\n\n"
-                "> 🛡️ **Status:** Keep-alive is active and responsive.\n"
-                "> 💡 **Tip:** Consider updating via `!setcurl <curl>` before major morning enlistment rushes to ensure seamless continuity."
+                f"**Current Archer's Hub browser session has been active for {hours:.1f} hours.**\n\n"
+                f"> ⏱️ **Estimated SSO Expiry:** ~`{remaining_mins}` minutes remaining (6.0h DLSU max).\n"
+                f"> 🛡️ **Status:** Currently connected & actively monitoring.\n\n"
+                f"> 💡 **Action (1-Tap):** Click your **ArcherSniper Extension** (or 1-tap phone bookmarklet) "
+                f"to reset your 6-hour runway before data goes stale!"
             ),
             level="info",
         )
@@ -685,6 +691,11 @@ class WatchdogEngine:
         except Exception as ex:
             logger.debug(f"Watchdog cycle log write error: {ex}")
 
+        # Post-reconnect silent baseline cycle completion
+        if self.needs_rebaseline:
+            self.needs_rebaseline = False
+            logger.info(f"🟢 [Engine] Post-reconnect silent baseline cycle #{self.total_poll_cycles:04d} complete. Slot cache re-anchored; ready for live drop alerts.")
+
     # ==========================================
     # SMART DELTA & MULTICAST DISPATCHING
     # ==========================================
@@ -716,8 +727,8 @@ class WatchdogEngine:
         # Update in-memory slot cache
         self.section_slot_cache[cache_key] = new_open
 
-        # Silence all alerts on Cycle 1 (baseline establishment on startup / restart)
-        if self.total_poll_cycles <= 1:
+        # Silence all alerts on Cycle 1 (startup) or post-reconnect silent baseline
+        if self.total_poll_cycles <= 1 or self.needs_rebaseline:
             return
 
         # If a brand-new section appears in subsequent cycles with open slots, treat as a new drop from 0.
@@ -1231,6 +1242,7 @@ class WatchdogEngine:
         self.consecutive_errors = 0
         self.session_connected_time = time.time()
         self.has_sent_6h_warning = False
+        self.needs_rebaseline = True
 
         # Cancel any pending 5-minute disconnect alert
         if self.disconnect_alert_task and not self.disconnect_alert_task.done():
